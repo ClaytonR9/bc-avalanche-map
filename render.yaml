@@ -1,0 +1,36 @@
+# Render Blueprint - https://render.com/docs/blueprint-spec
+# One-click-ish deploy: on Render, "New +" -> "Blueprint" -> connect this GitHub repo.
+# Render reads this file automatically and sets up the service below. You'll be prompted to
+# fill in the secret env vars (sync: false ones) in the dashboard during that setup - nothing
+# sensitive lives in this file or in git.
+#
+# Free plan notes: the filesystem is ephemeral (history.db resets on redeploys/restarts) and
+# the service spins down after inactivity, so the first request after a quiet period is slow
+# to wake up. Fine for an initial public version; upgrade to a paid plan + persistent disk
+# later if you want the CAIC forecast archive (history.db) to accumulate indefinitely.
+
+services:
+  - type: web
+    name: bc-avalanche-map
+    runtime: python
+    plan: free
+    buildCommand: "echo 'No build step needed - server.py only uses the Python standard library.'"
+    startCommand: "python3 server.py"
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      # Satellite imagery (weekly hi-res Sentinel-2) - optional. Leave blank to skip; the
+      # "Weekly satellite" basemap option will just show a short setup note instead.
+      - key: SH_CLIENT_ID
+        sync: false
+      - key: SH_CLIENT_SECRET
+        sync: false
+      - key: SH_INSTANCE_ID
+        sync: false
+      - key: SH_LAYER_NAME
+        value: TRUE_COLOR
+      # Historical wind/cloud data (NOAA NCEI Climate Data Online) - optional. Leave blank to
+      # skip; those specific cards will show a short setup note instead.
+      - key: NOAA_TOKEN
+        sync: false

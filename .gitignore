@@ -1,0 +1,19 @@
+# Secrets - never commit real credentials. Copy secrets.env.example to secrets.env and fill
+# in your own values; secrets.env itself is gitignored.
+secrets.env
+
+# Local accumulated CAIC forecast history (SQLite). This is per-install state, not source -
+# each deploy/install builds up its own archive over time.
+history.db
+history.db-journal
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

@@ -1,0 +1,1776 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colorado Avalanche Danger Map</title>
+<meta name="description" content="Daily Colorado avalanche danger ratings and hazard types overlaid on topo/3D terrain, with historical weather and forecast archives per area.">
+
+<!-- PWA: installable to a phone/desktop home screen via the browser's "Add to Home Screen" /
+     install prompt - no app-store review needed. -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1a2a4a">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CO Avy Map">
+<style>
+  :root { --bg:#ffffff; --fg:#1d232b; --muted:#5d6875; --line:#d9dee5; --panel:#ffffffee; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161b22; --fg:#e6ebf1; --muted:#9aa5b1; --line:#2e3742; --panel:#161b22ee; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  #map { position:absolute; inset:0; }
+  .panel { position:absolute; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+           padding:10px 12px; backdrop-filter: blur(6px); }
+  #controls { top:12px; left:12px; width:250px; }
+  #controlsHeader { display:flex; align-items:center; justify-content:space-between; gap:10px;
+                     cursor:pointer; user-select:none; margin-bottom:8px; }
+  #controlsHeader h1 { margin:0; }
+  #controlsToggle { width:20px; height:20px; line-height:1; border:1px solid var(--line); border-radius:4px;
+                     background:var(--bg); color:var(--fg); cursor:pointer; font-size:14px; padding:0; flex:none; }
+  #controlsBody.collapsed { display:none; }
+  .sectionHead { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .sectionHead label { margin:0; }
+  .sectionToggle { width:20px; height:20px; line-height:1; border:1px solid var(--line); border-radius:4px;
+                    background:var(--bg); color:var(--fg); cursor:pointer; font-size:14px; padding:0; flex:none; }
+  .sectionBody.collapsed { display:none; }
+  #controls h1 { font-size:15px; margin:0 0 8px; }
+  #controls label { display:block; margin:8px 0 2px; color:var(--muted); font-size:12px; }
+  #controls select, #controls input[type=date] { width:100%; padding:4px; }
+  #controls input[type=range] { width:100%; }
+  .row { display:flex; gap:6px; margin-top:8px; }
+  button { flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); cursor:pointer; }
+  button.on { background:#2b6cb0; color:#fff; border-color:#2b6cb0; }
+  #legend { top:84px; right:12px; z-index:2; max-width:210px; }
+  #legendHeader { display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; user-select:none; }
+  #legendHeader strong { font-size:13px; }
+  #legendToggle { width:20px; height:20px; line-height:1; border:1px solid var(--line); border-radius:4px;
+                  background:var(--bg); color:var(--fg); cursor:pointer; font-size:14px; padding:0; }
+  #legendBody { margin-top:6px; }
+  #legendBody.collapsed { display:none; }
+  #legendBody > div { display:flex; align-items:center; gap:8px; margin:2px 0; font-size:12px; }
+  #legend i { width:16px; height:12px; border:1px solid #0006; display:inline-block; }
+  #compass { top:12px; right:12px; width:64px; height:64px; padding:0; border-radius:50%; cursor:pointer; z-index:2; }
+  #compass svg { width:100%; height:100%; display:block; }
+  #compass #dial { transform-origin:50% 50%; transition:transform 0.05s linear; }
+  #peakSearch { top:12px; right:88px; width:230px; padding:6px 8px; z-index:2; }
+  #peakSearchInput { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font-size:13px; }
+  #peakResults { display:none; max-height:280px; overflow:auto; margin-top:4px; }
+  #peakResults .item { padding:6px 4px; cursor:pointer; font-size:13px; border-top:1px solid var(--line); }
+  #peakResults .item:hover, #peakResults .item.active { background:#2b6cb022; }
+  #peakResults .item .el { color:var(--muted); font-size:11px; }
+  #peakResults .empty { padding:6px 4px; font-size:12px; color:var(--muted); }
+  @media (max-width: 700px) { #peakSearch { width:calc(100% - 176px); right:76px; } }
+  #detail { top:88px; right:12px; width:310px; max-height:calc(100% - 140px); overflow:auto; display:none; }
+  #detail h2 { font-size:16px; margin:0 0 2px; }
+  #detail .close { position:absolute; top:6px; right:10px; cursor:pointer; color:var(--muted); font-size:18px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-weight:600; font-size:12px; }
+  .bands td { padding:2px 6px 2px 0; font-size:12px; }
+  .prob { border-top:1px solid var(--line); padding:6px 0; }
+  .prob b { font-size:13px; }
+  .small { font-size:12px; color:var(--muted); }
+  #banner { top:12px; left:50%; transform:translateX(-50%); background:#b7791fee; color:#fff; border:0; display:none; }
+  .disclaimer { position:absolute; bottom:4px; left:50%; transform:translateX(-50%); font-size:11px; color:var(--muted);
+                background:var(--panel); padding:2px 8px; border-radius:6px; white-space:nowrap; }
+  @media (max-width: 700px) { #detail { width:auto; left:150px; top:auto; bottom:44px; max-height:45%; } #legend .small { display:none; } }
+
+  /* ---- historical data view ---- */
+  .historyBtn { background:#2b6cb0; color:#fff; border:none; border-radius:6px; padding:7px 12px;
+                font-size:13px; cursor:pointer; white-space:nowrap; }
+  .historyBtn:hover { background:#2558a0; }
+  #historyView { position:fixed; inset:0; z-index:50; background:var(--bg); display:none; overflow:auto; overscroll-behavior:contain; }
+  #historyView.open { display:block; }
+  #historyHeader { position:sticky; top:0; background:var(--panel); backdrop-filter:blur(6px);
+                   border-bottom:1px solid var(--line); padding:14px 18px; z-index:2; }
+  #historyHeaderRow { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  #historyHeaderRow h1 { font-size:17px; margin:0 0 4px; }
+  #historyClose { width:28px; height:28px; line-height:1; border:1px solid var(--line); border-radius:6px;
+                  background:var(--bg); color:var(--fg); cursor:pointer; font-size:16px; padding:0; flex:none; }
+  #historyStations { font-size:12px; color:var(--muted); margin-top:2px; }
+  #historyTabs { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+  #historyTabs button { padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:var(--bg);
+                         color:var(--fg); cursor:pointer; font-size:12.5px; }
+  #historyTabs button.on { background:#2b6cb0; color:#fff; border-color:#2b6cb0; }
+  #historyContent { padding:18px; max-width:860px; margin:0 auto; }
+  .wxCard { border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .wxCardHead { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  .wxIcon { width:20px; height:20px; flex:none; }
+  .wxCardHead h3 { margin:0; font-size:14px; }
+  .wxStat { font-size:21px; font-weight:700; margin:4px 0 2px; }
+  .wxStatSub { font-size:12px; color:var(--muted); margin-bottom:8px; }
+  .wxChart { width:100%; height:auto; display:block; }
+  .wxChipRow { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+  .wxChip { border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:11px; color:var(--muted); }
+  .wxEmpty { font-size:12.5px; color:var(--muted); padding:4px 0; }
+  .wxLoading { font-size:13px; color:var(--muted); padding:30px 0; text-align:center; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel" id="controls">
+  <div id="controlsHeader">
+    <h1>Colorado Avalanche Danger</h1>
+    <button id="controlsToggle" aria-label="Collapse controls" title="Collapse controls">&minus;</button>
+  </div>
+  <div id="controlsBody">
+  <label for="day">Forecast date</label>
+  <input type="date" id="day">
+  <label for="base">Base map</label>
+  <select id="base">
+    <option value="topo">USGS Topo</option>
+    <option value="imagery">USGS Imagery (static, ~3yr old)</option>
+    <option value="dailysat">Daily satellite (NASA, low-res)</option>
+    <option value="weeklysat">Weekly satellite (Sentinel-2, hi-res)</option>
+  </select>
+  <div class="small" id="satNote" style="margin-top:4px"></div>
+  <label for="op">Zone fill opacity</label>
+  <input type="range" id="op" min="0.05" max="0.9" step="0.05" value="0.25">
+  <label style="display:flex;gap:6px;align-items:center;margin-top:10px;color:var(--fg)">
+    <input type="checkbox" id="slopeOn" checked> Shade individual slopes</label>
+  <label for="slopeOp">Slope shading opacity</label>
+  <input type="range" id="slopeOp" min="0.1" max="1" step="0.05" value="0.65">
+  <label for="minSlope">Only shade slopes <span id="minSlopeV">30</span>&deg; or steeper</label>
+  <input type="range" id="minSlope" min="20" max="40" step="1" value="30">
+  <div class="small" style="margin-top:8px">Treeline fixed at 11,500 ft. Near treeline = 11,250&ndash;11,750 ft.</div>
+  <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+    <div class="sectionHead">
+      <label style="display:flex;gap:6px;align-items:center;color:var(--fg)">
+        <input type="checkbox" id="slopeAngleOn"> Slope angle shading</label>
+      <button id="slopeAngleSectionToggle" class="sectionToggle" aria-label="Collapse slope angle shading" title="Collapse slope angle shading">&minus;</button>
+    </div>
+    <div id="slopeAngleSectionBody" class="sectionBody">
+    <label for="slopeAngleOp">Slope angle opacity</label>
+    <input type="range" id="slopeAngleOp" min="0.1" max="1" step="0.05" value="0.6">
+    <div id="slopeAngleLegend" style="display:none;margin-top:6px">
+      <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;border:1px solid var(--line)">
+        <div style="flex:1;background:#ffffff" title="0-9 degrees"></div>
+        <div style="flex:1;background:#90ee90" title="10-24 degrees"></div>
+        <div style="flex:1;background:#fff59d" title="25-29 degrees"></div>
+        <div style="flex:1;background:#cc5500" title="30-34 degrees"></div>
+        <div style="flex:1;background:#ff0000" title="35-39 degrees"></div>
+        <div style="flex:1;background:#800080" title="40-44 degrees"></div>
+        <div style="flex:1;background:#4169e1" title="45 degrees and up"></div>
+      </div>
+      <div class="small" style="display:flex;justify-content:space-between;margin-top:2px">
+        <span>0&deg;</span><span>10&deg;</span><span>25&deg;</span><span>30&deg;</span><span>35&deg;</span><span>40&deg;</span><span>45&deg;+</span>
+      </div>
+    </div>
+    <div class="small" id="slopeReadout" style="margin-top:6px">Turn on slope angle shading, then hover the map to read the angle.</div>
+    </div>
+  </div>
+  <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+    <div class="sectionHead">
+      <strong style="font-size:13px;color:var(--fg)">Land ownership</strong>
+      <button id="landSectionToggle" class="sectionToggle" aria-label="Collapse land ownership" title="Collapse land ownership">&minus;</button>
+    </div>
+    <div id="landSectionBody" class="sectionBody" style="margin-top:6px">
+    <label style="display:flex;gap:6px;align-items:center;color:var(--fg)">
+      <input type="checkbox" id="publicLandOn"> <span style="color:#006400;font-weight:600">&#9632;</span> Public land boundaries</label>
+    <label style="display:flex;gap:6px;align-items:center;color:var(--fg);margin-top:4px">
+      <input type="checkbox" id="privateLandOn"> <span style="color:#ff0000;font-weight:600">&#9632;</span> Private land boundaries</label>
+    <div class="small" id="landNote" style="margin-top:6px">Land ownership from BLM Surface Management Agency data. Boundaries are a general guide, not a legal survey.</div>
+    </div>
+  </div>
+  <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+    <div class="sectionHead">
+      <label style="display:flex;gap:6px;align-items:center;color:var(--fg)">
+        <input type="checkbox" id="snotelOn"> Snow depth (SNOTEL)</label>
+      <button id="snotelSectionToggle" class="sectionToggle" aria-label="Collapse snow depth" title="Collapse snow depth">&minus;</button>
+    </div>
+    <div id="snotelSectionBody" class="sectionBody">
+    <div id="snotelLegend" style="display:none;margin-top:6px">
+      <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;border:1px solid var(--line)">
+        <div style="flex:1;background:#9aa5b1" title="0 inches"></div>
+        <div style="flex:1;background:#c9a876" title="1-11 inches"></div>
+        <div style="flex:1;background:#c6d94f" title="12-23 inches"></div>
+        <div style="flex:1;background:#4fc3f7" title="24-35 inches"></div>
+        <div style="flex:1;background:#1e88e5" title="36-47 inches"></div>
+        <div style="flex:1;background:#1a3c8c" title="48-59 inches"></div>
+        <div style="flex:1;background:#7b1fa2" title="60+ inches"></div>
+      </div>
+      <div class="small" style="display:flex;justify-content:space-between;margin-top:2px">
+        <span>0&quot;</span><span>1&quot;</span><span>12&quot;</span><span>24&quot;</span><span>36&quot;</span><span>48&quot;</span><span>60&quot;+</span>
+      </div>
+    </div>
+    <div class="small" id="snotelNote" style="margin-top:6px">USDA/NRCS SNOTEL stations, current snow depth. Click a dot for station details.</div>
+    </div>
+  </div>
+  <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+    <div class="sectionHead">
+      <label style="display:flex;gap:6px;align-items:center;color:var(--fg)">
+        <input type="checkbox" id="wxOn"> Weather stations</label>
+      <button id="wxSectionToggle" class="sectionToggle" aria-label="Collapse weather stations" title="Collapse weather stations">&minus;</button>
+    </div>
+    <div id="wxSectionBody" class="sectionBody">
+    <div class="small" id="wxNote" style="margin-top:6px">NWS official airport/ASOS stations. Click a station for today's forecast.</div>
+    </div>
+  </div>
+  <div class="row">
+    <button id="btn3d">3D terrain</button>
+    <button id="btnshade" class="on">Hillshade</button>
+  </div>
+  <div class="small" id="status" style="margin-top:8px">Loading...</div>
+  <div class="small" style="margin-top:4px;opacity:.7">build 4: slope shading + compass</div>
+  </div>
+</div>
+
+<div class="panel" id="banner"></div>
+
+<div class="panel" id="peakSearch">
+  <input id="peakSearchInput" type="text" placeholder="Search peaks&hellip;" autocomplete="off" aria-label="Search peaks">
+  <div id="peakResults"></div>
+</div>
+
+<div class="panel" id="compass" role="button" tabindex="0" title="Compass. Click to point north up.">
+  <svg viewBox="0 0 64 64" aria-label="Compass">
+    <g id="dial">
+      <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.5"/>
+      <polygon points="32,9 37.5,32 26.5,32" fill="#e0382f"/>
+      <polygon points="32,55 37.5,32 26.5,32" fill="currentColor" fill-opacity="0.45"/>
+      <text x="32" y="8" font-size="9" font-weight="700" text-anchor="middle" fill="#e0382f">N</text>
+      <text x="59" y="35" font-size="8" text-anchor="middle" fill="currentColor">E</text>
+      <text x="32" y="62" font-size="8" text-anchor="middle" fill="currentColor">S</text>
+      <text x="5" y="35" font-size="8" text-anchor="middle" fill="currentColor">W</text>
+    </g>
+    <circle cx="32" cy="32" r="2.5" fill="var(--bg)" stroke="currentColor" stroke-width="1"/>
+  </svg>
+</div>
+
+<div class="panel" id="legend">
+  <div id="legendHeader">
+    <strong>Legend</strong>
+    <button id="legendToggle" aria-label="Collapse legend" title="Collapse legend">&minus;</button>
+  </div>
+  <div id="legendBody">
+    <div><i style="background:#50B848"></i>1 Low</div>
+    <div><i style="background:#FFF200"></i>2 Moderate</div>
+    <div><i style="background:#F7941E"></i>3 Considerable</div>
+    <div><i style="background:#ED1C24"></i>4 High</div>
+    <div><i style="background:#231F20"></i>5 Extreme</div>
+    <div><i style="background:#9aa5b1"></i>No rating</div>
+    <div class="small" style="max-width:190px;margin-top:4px">Slope colors: danger for that aspect and elevation band. Unshaded = gentler than the slope cutoff.</div>
+  </div>
+</div>
+
+<div class="panel" id="detail"><span class="close" id="closeDetail">&times;</span><div id="detailBody"></div></div>
+
+<div class="disclaimer">Data: Colorado Avalanche Information Center via avalanche.org. Peak names &copy; OpenStreetMap contributors (ODbL). Always read the full forecast at avalanche.state.co.us before travelling.</div>
+
+<div id="historyView" role="dialog" aria-label="Historical weather data">
+  <div id="historyHeader">
+    <div id="historyHeaderRow">
+      <div>
+        <h1 id="historyTitle">Historical weather</h1>
+        <div id="historyStations" class="small">Loading nearby stations&hellip;</div>
+      </div>
+      <button id="historyClose" aria-label="Close historical data" title="Back to map">&times;</button>
+    </div>
+    <div id="historyTabs">
+      <button id="histTab7d" data-range="7d">Previous 7 Days</button>
+      <button id="histTabMonth" data-range="month">This Month</button>
+      <button id="histTab3mo" data-range="3mo">Past 3 Months</button>
+      <button id="histTab6mo" data-range="6mo">Past 6 Months</button>
+      <button id="histTabTrends" data-range="trends">Historical Monthly Trends</button>
+    </div>
+  </div>
+  <div id="historyContent"><div class="wxLoading">Loading&hellip;</div></div>
+</div>
+
+<script>
+function startApp() {
+const COLORS = {1:'#50B848', 2:'#FFF200', 3:'#F7941E', 4:'#ED1C24', 5:'#231F20'};
+const NAMES  = {1:'Low', 2:'Moderate', 3:'Considerable', 4:'High', 5:'Extreme', '-1':'No rating'};
+const NOCOLOR = '#9aa5b1';
+const ASPECTS = ['north','northeast','east','southeast','south','southwest','west','northwest'];
+const BANDS = ['upper','middle','lower']; // outer ring -> inner ring
+
+const dangerColorExpr = ['match', ['to-number', ['get','danger_level']],
+  1, COLORS[1], 2, COLORS[2], 3, COLORS[3], 4, COLORS[4], 5, COLORS[5], NOCOLOR];
+
+// Snow depth color bands (our own design - CalTopo's SNOTEL layer colors by sensor type,
+// not by depth, so there's no existing "CalTopo scheme" to match here).
+const SNOW_DEPTH_COLOR_EXPR = ['step', ['get', 'depth_in'],
+  '#9aa5b1',       // 0in - bare ground
+  1,  '#c9a876',   // 1-11in - thin
+  12, '#c6d94f',   // 12-23in - building
+  24, '#4fc3f7',   // 24-35in - moderate
+  36, '#1e88e5',   // 36-47in - good
+  48, '#1a3c8c',   // 48-59in - deep
+  60, '#7b1fa2'    // 60in+ - very deep
+];
+
+// ==== AVY ENGINE START (pure functions, no DOM) ====
+const BAND_IDX = { upper:0, middle:1, lower:2 };
+const LEVEL_RGB = {1:[80,184,72], 2:[255,242,0], 3:[247,148,30], 4:[237,28,36], 5:[35,31,32]};
+
+// Slope-angle shading, independent of avalanche danger. Covers the full 0+ range, so every
+// slope gets colored (nothing is left transparent).
+const SLOPE_BANDS = [
+  [0,  10, [255,255,255]],  // white
+  [10, 25, [144,238,144]],  // light green
+  [25, 30, [255,245,157]],  // light yellow
+  [30, 35, [204,85,0]],     // burnt orange
+  [35, 40, [255,0,0]],      // red
+  [40, 45, [128,0,128]],    // purple
+  [45, 999, [65,105,225]],  // royal blue
+];
+function slopeColor(deg) {
+  for (const [lo, hi, c] of SLOPE_BANDS) if (deg >= lo && deg < hi) return c;
+  return null; // negative/NaN safety net; should not occur in practice
+}
+
+// Per-zone lookup: level (1-5, 0 = none) for each of 8 aspects x 3 elevation bands (index = aspect*3 + band).
+// Rule: aspect/elevation cells named in an avalanche problem get that band's rating; other cells get
+// one level lower (min 1). If a zone lists no problems, every cell gets the band rating.
+function buildZoneModel(p) {
+  const bands = typeof p.bands === 'string' ? JSON.parse(p.bands) : p.bands;
+  const problems = typeof p.problems === 'string' ? JSON.parse(p.problems) : (p.problems || []);
+  const zl = +p.danger_level;
+  let base = [bands && bands.above, bands && bands.near, bands && bands.below].map(v => (+v > 0 ? +v : 0));
+  const fallback = Math.max(...base, zl > 0 ? zl : 0);
+  if (!fallback) return null;
+  base = base.map(v => v || fallback);
+  const flagged = new Set();
+  problems.forEach(pr => (pr.location || []).forEach(l => {
+    const t = String(l).toLowerCase().trim().split(/\s+/);
+    const ai = ASPECTS.indexOf(t[0]);
+    if (ai < 0) return;
+    if (t[1] in BAND_IDX) flagged.add(ai * 3 + BAND_IDX[t[1]]);
+    else for (let b = 0; b < 3; b++) flagged.add(ai * 3 + b);
+  }));
+  const levels = new Uint8Array(24), isProb = new Uint8Array(24);
+  for (let a = 0; a < 8; a++) for (let b = 0; b < 3; b++) {
+    const i = a * 3 + b, hit = flagged.has(i);
+    isProb[i] = hit ? 1 : 0;
+    levels[i] = (!flagged.size || hit) ? base[b] : Math.max(1, base[b] - 1);
+  }
+  return { levels, isProb, hasProblems: flagged.size > 0 };
+}
+
+// elev: Float32Array(256*256) metres. zoneIdx: Uint8Array, 0 = outside any zone, else (zone index + 1).
+// Returns RGBA Uint8ClampedArray(256*256*4).
+function shadeTile(elev, zoneIdx, models, z, latDeg, opts) {
+  const N = 256, out = new Uint8ClampedArray(N * N * 4);
+  const res = 40075016.686 * Math.cos(latDeg * Math.PI / 180) / (N * Math.pow(2, z)); // metres / pixel
+  const tanMin = Math.tan(opts.minSlope * Math.PI / 180);
+  for (let y = 0; y < N; y++) {
+    const yu = y > 0 ? y - 1 : 0, yd = y < N - 1 ? y + 1 : N - 1;
+    for (let x = 0; x < N; x++) {
+      const i = y * N + x, zi = zoneIdx[i];
+      if (!zi) continue;
+      const model = models[zi - 1];
+      if (!model) continue;
+      const xl = x > 0 ? x - 1 : 0, xr = x < N - 1 ? x + 1 : N - 1;
+      const gx = (elev[y * N + xr] - elev[y * N + xl]) / ((xr - xl) * res);   // rise going east
+      const gy = (elev[yu * N + x] - elev[yd * N + x]) / ((yd - yu) * res);   // rise going north
+      if (Math.hypot(gx, gy) < tanMin) continue;
+      // slope faces downhill: azimuth clockwise from north
+      const az = ((Math.atan2(-gx, -gy) * 180 / Math.PI) + 360) % 360;
+      const ai = Math.round(az / 45) % 8;
+      const e = elev[i];
+      const band = e > opts.aboveM ? 0 : (e >= opts.belowM ? 1 : 2);
+      const lvl = model.levels[ai * 3 + band];
+      const c = LEVEL_RGB[lvl];
+      if (!c) continue;
+      const o = i * 4;
+      out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+
+// elev: Float32Array(256*256) metres, no zone/danger join - shades every pixel by its raw slope angle.
+function shadeSlopeAngleTile(elev, z, latDeg) {
+  const N = 256, out = new Uint8ClampedArray(N * N * 4);
+  const res = 40075016.686 * Math.cos(latDeg * Math.PI / 180) / (N * Math.pow(2, z));
+  for (let y = 0; y < N; y++) {
+    const yu = y > 0 ? y - 1 : 0, yd = y < N - 1 ? y + 1 : N - 1;
+    for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      const xl = x > 0 ? x - 1 : 0, xr = x < N - 1 ? x + 1 : N - 1;
+      const gx = (elev[y * N + xr] - elev[y * N + xl]) / ((xr - xl) * res);
+      const gy = (elev[yu * N + x] - elev[yd * N + x]) / ((yd - yu) * res);
+      const deg = Math.atan(Math.hypot(gx, gy)) * 180 / Math.PI;
+      const c = slopeColor(deg);
+      if (!c) continue;
+      const o = i * 4;
+      out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+// ==== AVY ENGINE END ====
+
+// ---- slope-shading tile protocol (browser only) ----
+let zoneFeatures = [], zoneModels = [], zoneBBoxes = [], slopeVersion = 0, slopeAngleVersion = 0;
+let avyOpts = { minSlope:30, aboveM:11750*0.3048, belowM:11250*0.3048 };
+
+function prepareZones(fc) {
+  zoneFeatures = fc.features;
+  zoneModels = zoneFeatures.map(f => buildZoneModel(f.properties));
+  zoneBBoxes = zoneFeatures.map(f => {
+    let w = 180, s = 90, e = -180, n = -90;
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    polys.forEach(poly => poly[0].forEach(([lo, la]) => { w = Math.min(w, lo); e = Math.max(e, lo); s = Math.min(s, la); n = Math.max(n, la); }));
+    return [w, s, e, n];
+  });
+}
+function tilePx(z, tx, ty, lng, lat) {
+  const n = Math.pow(2, z), r = lat * Math.PI / 180;
+  return [((lng + 180) / 360 * n - tx) * 256,
+          ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n - ty) * 256];
+}
+function tileLngLat(z, tx, ty) {
+  const n = Math.pow(2, z);
+  return [tx / n * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * ty / n))) * 180 / Math.PI];
+}
+async function encodePng(rgba) {
+  const c = new OffscreenCanvas(256, 256);
+  c.getContext('2d').putImageData(new ImageData(rgba, 256, 256), 0, 0);
+  return await (await c.convertToBlob({ type:'image/png' })).arrayBuffer();
+}
+let blankPng = null;
+
+// Shared elevation-tile cache (also powers the slope-angle hover readout). LRU-ish eviction.
+const elevTileCache = new Map(); // "z/x/y" -> Float32Array(256*256) metres, or absent if never fetched/failed
+const ELEV_CACHE_MAX = 300;
+async function fetchElevTile(z, tx, ty, signal) {
+  const key = `${z}/${tx}/${ty}`;
+  if (elevTileCache.has(key)) {
+    const v = elevTileCache.get(key);
+    elevTileCache.delete(key); elevTileCache.set(key, v); // refresh recency
+    return v;
+  }
+  let elev = null;
+  try {
+    const resp = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tx}/${ty}.png`, { signal });
+    if (resp.ok) {
+      const bmp = await createImageBitmap(await resp.blob(), { colorSpaceConversion:'none' });
+      const dc = new OffscreenCanvas(256, 256), dctx = dc.getContext('2d', { willReadFrequently:true });
+      dctx.drawImage(bmp, 0, 0);
+      const px = dctx.getImageData(0, 0, 256, 256).data;
+      elev = new Float32Array(256 * 256);
+      for (let i = 0; i < elev.length; i++) elev[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768;
+    }
+  } catch (e) { return null; } // aborted or network error: don't cache
+  if (elev) {
+    elevTileCache.set(key, elev);
+    if (elevTileCache.size > ELEV_CACHE_MAX) elevTileCache.delete(elevTileCache.keys().next().value);
+  }
+  return elev;
+}
+
+maplibregl.addProtocol('avy', async (params, abort) => {
+  const m = params.url.match(/avy:\/\/(\d+)\/(\d+)\/(\d+)/);
+  const z = +m[1], tx = +m[2], ty = +m[3];
+  const blank = async () => ({ data: blankPng || (blankPng = await encodePng(new Uint8ClampedArray(256 * 256 * 4))) });
+  const [w, n] = tileLngLat(z, tx, ty), [e, s] = tileLngLat(z, tx + 1, ty + 1);
+  const hits = [];
+  zoneBBoxes.forEach((b, i) => { if (zoneModels[i] && b[0] < e && b[2] > w && b[1] < n && b[3] > s) hits.push(i); });
+  if (!hits.length) return blank();
+
+  const elev = await fetchElevTile(z, tx, ty, abort && abort.signal);
+  if (!elev) return blank();
+
+  // rasterise zone ids (index+1 in the red channel; edge pixels below 50% alpha are ignored)
+  const zc = new OffscreenCanvas(256, 256), zctx = zc.getContext('2d', { willReadFrequently:true });
+  hits.forEach(i => {
+    const g = zoneFeatures[i].geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+    zctx.fillStyle = `rgb(${i + 1},0,0)`;
+    polys.forEach(poly => {
+      zctx.beginPath();
+      poly.forEach(ring => ring.forEach(([lo, la], k) => { const [X, Y] = tilePx(z, tx, ty, lo, la); k ? zctx.lineTo(X, Y) : zctx.moveTo(X, Y); }));
+      zctx.fill('evenodd');
+    });
+  });
+  const zp = zctx.getImageData(0, 0, 256, 256).data, zoneIdx = new Uint8Array(256 * 256);
+  for (let i = 0; i < zoneIdx.length; i++) zoneIdx[i] = zp[i * 4 + 3] >= 128 ? zp[i * 4] : 0;
+
+  const latC = (n + s) / 2;
+  return { data: await encodePng(shadeTile(elev, zoneIdx, zoneModels, z, latC, avyOpts)) };
+});
+
+maplibregl.addProtocol('slopeangle', async (params, abort) => {
+  const m = params.url.match(/slopeangle:\/\/(\d+)\/(\d+)\/(\d+)/);
+  const z = +m[1], tx = +m[2], ty = +m[3];
+  const blank = async () => ({ data: blankPng || (blankPng = await encodePng(new Uint8ClampedArray(256 * 256 * 4))) });
+  const elev = await fetchElevTile(z, tx, ty, abort && abort.signal);
+  if (!elev) return blank();
+  const [w, n] = tileLngLat(z, tx, ty), [e, s] = tileLngLat(z, tx + 1, ty + 1);
+  const latC = (n + s) / 2;
+  return { data: await encodePng(shadeSlopeAngleTile(elev, z, latC)) };
+});
+
+function readAvyOpts() {
+  const FT = 0.3048, TREELINE_FT = 11500, NEAR_FT = 250;   // near treeline = 11,250-11,750 ft
+  avyOpts = { minSlope: +$('minSlope').value,
+              aboveM: (TREELINE_FT + NEAR_FT) * FT, belowM: (TREELINE_FT - NEAR_FT) * FT };
+}
+function rebuildSlopes() {
+  if (map.getLayer('avy')) map.removeLayer('avy');
+  if (map.getSource('avy')) map.removeSource('avy');
+  if (!$('slopeOn').checked) return;
+  readAvyOpts();
+  slopeVersion++;
+  map.addSource('avy', { type:'raster', tiles:[`avy://{z}/{x}/{y}?v=${slopeVersion}`], tileSize:256, minzoom:8, maxzoom:14 });
+  map.addLayer({ id:'avy', type:'raster', source:'avy',
+    paint:{ 'raster-opacity': +$('slopeOp').value, 'raster-fade-duration':0 } }, 'danger-line');
+}
+
+function rebuildSlopeAngle() {
+  if (map.getLayer('slopeangle')) map.removeLayer('slopeangle');
+  if (map.getSource('slopeangle')) map.removeSource('slopeangle');
+  if (!$('slopeAngleOn').checked) return;
+  slopeAngleVersion++;
+  map.addSource('slopeangle', { type:'raster', tiles:[`slopeangle://{z}/{x}/{y}?v=${slopeAngleVersion}`], tileSize:256, minzoom:8, maxzoom:14 });
+  map.addLayer({ id:'slopeangle', type:'raster', source:'slopeangle',
+    paint:{ 'raster-opacity': +$('slopeAngleOp').value, 'raster-fade-duration':0 } }, 'danger-fill');
+}
+
+// ---- Public/private land ownership boundaries ----
+// Live-queried from BLM's "Surface Management Agency" (SMA) ArcGIS REST service, which
+// classifies ALL land (not just public land) into agency/ownership categories - including
+// an explicit "private" class - so we don't have to guess at parcel lines ourselves.
+const LAND_BASE = 'https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_LimitedScale/MapServer';
+// Sublayer ids for each ownership category in that service (layer 1, the merged view, is broken
+// server-side, so each category is queried separately and the results are merged client-side).
+const PUBLIC_LAND_LAYERS = [7, 8, 9, 10, 11, 13, 14, 15]; // BLM, NPS, USFS, USFW, USBR, other federal, state, local
+const PRIVATE_LAND_LAYERS = [16]; // "Private or unknown"
+const LAND_MIN_ZOOM = 9; // below this the bbox is too big for a fast/useful query - ask the user to zoom in
+const landAbort = { publicLand: null, privateLand: null };
+
+async function fetchLandLayer(kind, layerIds) {
+  const sourceId = kind; // 'publicLand' | 'privateLand'
+  if (map.getZoom() < LAND_MIN_ZOOM) {
+    map.getSource(sourceId).setData({ type:'FeatureCollection', features:[] });
+    setLandNote('Zoom in further to load land ownership boundaries.');
+    return;
+  }
+  if (landAbort[kind]) landAbort[kind].abort();
+  const ac = new AbortController();
+  landAbort[kind] = ac;
+  const b = map.getBounds();
+  const geometry = JSON.stringify({ xmin:b.getWest(), ymin:b.getSouth(), xmax:b.getEast(), ymax:b.getNorth() });
+  const qs = new URLSearchParams({
+    f:'geojson', where:'1=1', geometry, geometryType:'esriGeometryEnvelope',
+    inSR:'4326', spatialRel:'esriSpatialRelIntersects',
+    outFields:'ADMIN_AGENCY_CODE,ADMIN_UNIT_NAME', returnGeometry:'true', geometryPrecision:'5'
+  });
+  try {
+    const merged = { type:'FeatureCollection', features:[] };
+    await Promise.all(layerIds.map(async lyr => {
+      const r = await fetch(`${LAND_BASE}/${lyr}/query?${qs.toString()}`, { signal: ac.signal });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (j.features) merged.features.push(...j.features);
+    }));
+    if (ac.signal.aborted) return;
+    map.getSource(sourceId).setData(merged);
+    setLandNote(merged.features.length ? '' :
+      'No land ownership data returned for this area.');
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error('land ownership fetch failed', e);
+      setLandNote('Could not load land ownership boundaries (BLM service may be unavailable).');
+    }
+  }
+}
+
+function setLandNote(msg) {
+  $('landNote').textContent = msg ||
+    'Land ownership from BLM Surface Management Agency data. Boundaries are a general guide, not a legal survey.';
+}
+
+function refreshLandLayers() {
+  if ($('publicLandOn').checked) fetchLandLayer('publicLand', PUBLIC_LAND_LAYERS);
+  if ($('privateLandOn').checked) fetchLandLayer('privateLand', PRIVATE_LAND_LAYERS);
+}
+
+// ---- SNOTEL snow depth ----
+// NRCS's AWDB REST API (free, no key, open CORS) - station metadata is small and statewide
+// (~100 CO stations) so it's fetched whole, unlike the land-ownership layer which is tiled
+// by viewport. Depth readings lag a day or so, so we pull the last week per station and use
+// whichever is the most recent actual value, rather than assuming "today" has posted yet.
+const SNOTEL_STATIONS_URL = 'https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/stations?stationTriplets=*:CO:SNTL&activeOnly=true';
+const SNOTEL_DATA_URL = 'https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=*:CO:SNTL&elements=SNWD&duration=DAILY&beginDate=-7&endDate=0&returnFlags=false';
+let snotelStations = null;   // cached station metadata (triplet -> {name, lat, lon, elevation, ...})
+let snotelRefreshTimer = null;
+
+async function fetchSnotelStations() {
+  if (snotelStations) return snotelStations;
+  const r = await fetch(SNOTEL_STATIONS_URL);
+  if (!r.ok) throw new Error(`station list request failed (${r.status})`);
+  const list = await r.json();
+  snotelStations = {};
+  for (const s of list) snotelStations[s.stationTriplet] = s;
+  return snotelStations;
+}
+
+async function refreshSnotel() {
+  $('snotelNote').textContent = 'Loading SNOTEL stations...';
+  try {
+    const stations = await fetchSnotelStations();
+    const r = await fetch(SNOTEL_DATA_URL);
+    if (!r.ok) throw new Error(`snow depth request failed (${r.status})`);
+    const rows = await r.json();
+    const features = [];
+    for (const row of rows) {
+      const st = stations[row.stationTriplet];
+      if (!st) continue;
+      const series = (row.data && row.data[0] && row.data[0].values) || [];
+      let latest = null;
+      for (let i = series.length - 1; i >= 0; i--) {
+        if (series[i].value !== null && series[i].value !== undefined) { latest = series[i]; break; }
+      }
+      if (!latest) continue;  // station reporting nothing recently - leave it off the map
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [st.longitude, st.latitude] },
+        properties: {
+          name: st.name, elevation: st.elevation, stationId: st.stationId,
+          depth_in: latest.value, asof: latest.date
+        }
+      });
+    }
+    map.getSource('snotel').setData({ type: 'FeatureCollection', features });
+    $('snotelNote').textContent = features.length
+      ? `${features.length} of ${Object.keys(stations).length} Colorado SNOTEL stations reporting. Click a dot for details.`
+      : 'No current SNOTEL readings available right now.';
+  } catch (e) {
+    console.error('SNOTEL fetch failed', e);
+    $('snotelNote').textContent = 'Could not load SNOTEL data: ' + e.message;
+  }
+}
+
+// ---- NWS weather stations ----
+// api.weather.gov's full CO station list is 2,000+, almost all crowd-sourced mesonet
+// sensors with cryptic IDs and no individual public forecast page. We only show the
+// official ICAO-coded (K***) airport/ASOS stations - a few dozen, each with a real name
+// and a genuine forecast. The station list itself barely changes, so it's fetched once
+// and cached; today's forecast is fetched lazily per station, on click.
+const WX_STATIONS_URL = 'https://api.weather.gov/stations?state=CO&limit=500';
+let wxStations = null;  // cached: array of {id, name, lat, lon, elevation}
+
+async function fetchWxStations() {
+  if (wxStations) return wxStations;
+  const stations = [];
+  let url = WX_STATIONS_URL;
+  let pages = 0;
+  while (url && pages < 10) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`station list request failed (${r.status})`);
+    const j = await r.json();
+    if (!j.features || !j.features.length) break;
+    for (const f of j.features) {
+      if (!/^K[A-Z]{3}$/.test(f.properties.stationIdentifier)) continue;
+      stations.push({
+        id: f.properties.stationIdentifier,
+        name: f.properties.name,
+        lon: f.geometry.coordinates[0],
+        lat: f.geometry.coordinates[1],
+        elevation: f.properties.elevation ? f.properties.elevation.value : null
+      });
+    }
+    pages++;
+    url = j.pagination && j.pagination.next;
+  }
+  wxStations = stations;
+  return stations;
+}
+
+async function refreshWx() {
+  $('wxNote').textContent = 'Loading weather stations...';
+  try {
+    const stations = await fetchWxStations();
+    const features = stations.map(st => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [st.lon, st.lat] },
+      properties: st
+    }));
+    map.getSource('wx').setData({ type: 'FeatureCollection', features });
+    $('wxNote').textContent = `${features.length} official NWS airport/ASOS stations in Colorado. Click one for today's forecast.`;
+  } catch (e) {
+    console.error('Weather station fetch failed', e);
+    $('wxNote').textContent = 'Could not load weather stations: ' + e.message;
+  }
+}
+
+// Broadcast-tower icon, drawn directly on a canvas (no external image/SVG needed) and
+// registered once via map.addImage so the symbol layer can reference it by name.
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function buildWxIcon() {
+  const size = 48;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  roundRectPath(ctx, 2, 2, size - 4, size - 4, 10);
+  ctx.fillStyle = '#eef1f4';
+  ctx.fill();
+  ctx.strokeStyle = '#c7ccd2';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  const cx = size / 2, boxY = 15, boxSize = 8;
+  ctx.strokeStyle = '#1a1f26';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // pole
+  ctx.beginPath();
+  ctx.moveTo(cx, size - 9);
+  ctx.lineTo(cx, boxY + boxSize);
+  ctx.stroke();
+  // base feet
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, size - 9);
+  ctx.lineTo(cx + 5, size - 9);
+  ctx.stroke();
+  // antenna box
+  ctx.strokeRect(cx - boxSize / 2, boxY, boxSize, boxSize);
+  // signal arcs - two concentric brackets on each side of the antenna box
+  const boxCy = boxY + boxSize / 2;
+  ctx.lineWidth = 2;
+  [7, 11].forEach(radius => {
+    ctx.beginPath();
+    ctx.arc(cx, boxCy, radius, -Math.PI / 3, Math.PI / 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, boxCy, radius, Math.PI - Math.PI / 3, Math.PI + Math.PI / 3);
+    ctx.stroke();
+  });
+
+  return ctx.getImageData(0, 0, size, size);
+}
+
+// NASA GIBS imagery is published a few hours after capture, so "today" can have gaps -
+// yesterday (UTC) is reliably available. Recomputed on a timer so a tab left open overnight
+// rolls over to the new day's imagery without needing a page reload.
+function gibsDateUTC() {
+  const d = new Date(Date.now() - 24 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+function gibsTileUrl(date) {
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+}
+let gibsDate = gibsDateUTC();
+
+const map = new maplibregl.Map({
+  container: 'map',
+  center: [-106.2, 39.2], zoom: 7, maxPitch: 80,
+  style: {
+    version: 8,
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sources: {
+      topo: { type:'raster', tileSize:256, maxzoom:16,
+        tiles:['https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}'],
+        attribution:'USGS The National Map' },
+      imagery: { type:'raster', tileSize:256, maxzoom:16,
+        tiles:['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'],
+        attribution:'USGS The National Map' },
+      dem: { type:'raster-dem', encoding:'terrarium', tileSize:256, maxzoom:14,
+        tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+        attribution:'Mapzen / AWS Terrain Tiles' },
+      danger: { type:'geojson', data:{type:'FeatureCollection', features:[]} },
+      peaks: { type:'geojson', data:'/peaks.json' },
+      publicLand: { type:'geojson', data:{type:'FeatureCollection', features:[]} },
+      privateLand: { type:'geojson', data:{type:'FeatureCollection', features:[]} },
+      // Low-res, ~daily: NASA VIIRS true-color via GIBS (free, no account, ~250m/pixel).
+      dailysat: { type:'raster', tileSize:256, minzoom:1, maxzoom:9,
+        tiles:[gibsTileUrl(gibsDate)],
+        attribution:'NASA EOSDIS GIBS / VIIRS (SNPP), imagery from ' + gibsDate },
+      // Hi-res, ~weekly: Sentinel-2 via our server's /api/sat-tile proxy (needs CDSE credentials
+      // in secrets.env - see README; the proxy returns a clear error tile until configured).
+      weeklysat: { type:'raster', tileSize:256, minzoom:1, maxzoom:16,
+        tiles:['/api/sat-tile/{z}/{x}/{y}'],
+        attribution:'Copernicus Sentinel-2 (modified Copernicus Sentinel data), via Copernicus Data Space Ecosystem' },
+      snotel: { type:'geojson', data:{type:'FeatureCollection', features:[]} },
+      wx: { type:'geojson', data:{type:'FeatureCollection', features:[]} }
+    },
+    layers: [
+      { id:'topo', type:'raster', source:'topo' },
+      { id:'imagery', type:'raster', source:'imagery', layout:{visibility:'none'} },
+      { id:'dailysat', type:'raster', source:'dailysat', layout:{visibility:'none'} },
+      { id:'weeklysat', type:'raster', source:'weeklysat', layout:{visibility:'none'} },
+      { id:'hillshade', type:'hillshade', source:'dem',
+        paint:{ 'hillshade-exaggeration':0.4, 'hillshade-shadow-color':'#00000080' } },
+      { id:'danger-fill', type:'fill', source:'danger',
+        paint:{ 'fill-color':dangerColorExpr, 'fill-opacity':0.25 } },
+      { id:'danger-line', type:'line', source:'danger',
+        paint:{ 'line-color':'#111', 'line-width':1.2 } },
+      { id:'danger-label', type:'symbol', source:'danger',
+        layout:{ 'text-field':['get','name'], 'text-size':12, 'text-font':['Open Sans Semibold'] },
+        paint:{ 'text-color':'#111', 'text-halo-color':'#fff', 'text-halo-width':1.5 } },
+      // Public/private land ownership boundaries (BLM Surface Management Agency data),
+      // fetched live for the current view - see fetchLandLayer(). Off by default.
+      { id:'public-land-line', type:'line', source:'publicLand', layout:{ visibility:'none' },
+        paint:{ 'line-color':'#006400', 'line-width':1.8, 'line-opacity':0.9 } },
+      { id:'private-land-line', type:'line', source:'privateLand', layout:{ visibility:'none' },
+        paint:{ 'line-color':'#ff0000', 'line-width':1.8, 'line-opacity':0.9 } },
+      // Only named peaks tall enough for the current zoom are even considered for placement;
+      // among those, symbol-sort-key makes taller summits win the collision contest, so as you
+      // zoom in, progressively shorter peaks fill in instead of everything fighting for space.
+      // Peaks with no known elevation (no OSM ele tag - we never guess a number) only appear
+      // once you're zoomed in close, and always lose the collision contest to known peaks.
+      { id:'peak-points', type:'circle', source:'peaks',
+        filter: ['case',
+          ['==', ['get','ele_m'], null], ['>=', ['zoom'], 12],
+          ['>=', ['get','ele_m'], ['interpolate',['linear'],['zoom'], 7,4200, 9,3800, 11,3200, 13,2400, 15,0]]
+        ],
+        paint: { 'circle-radius':2.5, 'circle-color':'#3a2a1a', 'circle-stroke-color':'#fff', 'circle-stroke-width':1 } },
+      { id:'peak-label', type:'symbol', source:'peaks',
+        filter: ['case',
+          ['==', ['get','ele_m'], null], ['>=', ['zoom'], 12],
+          ['>=', ['get','ele_m'], ['interpolate',['linear'],['zoom'], 7,4200, 9,3800, 11,3200, 13,2400, 15,0]]
+        ],
+        layout: {
+          'text-field': ['get','name'], 'text-size':11, 'text-font':['Open Sans Semibold'],
+          'text-anchor':'bottom', 'text-offset':[0,-0.6], 'text-max-width':8,
+          'symbol-sort-key': ['-', 9000, ['coalesce', ['get','ele_m'], 0]],
+          'text-allow-overlap': false, 'text-optional': true, 'icon-allow-overlap': false
+        },
+        paint: { 'text-color':'#2a1f14', 'text-halo-color':'#fff', 'text-halo-width':1.3 } },
+      // SNOTEL stations, colored by current snow depth - see refreshSnotel(). Off by default.
+      { id:'snotel-points', type:'circle', source:'snotel', layout:{ visibility:'none' },
+        paint: {
+          'circle-radius': 6, 'circle-color': SNOW_DEPTH_COLOR_EXPR,
+          'circle-stroke-color': '#000', 'circle-stroke-width': 1, 'circle-opacity': 0.9
+        } },
+      // NWS official airport/ASOS weather stations - see fetchWxStations()/refreshWx(). Off by default.
+      { id:'wx-points', type:'symbol', source:'wx', layout:{
+          visibility:'none', 'icon-image':'wx-icon', 'icon-size':0.55, 'icon-allow-overlap':true
+        } }
+    ]
+  }
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+map.addControl(new maplibregl.ScaleControl({unit:'imperial'}), 'bottom-right');
+
+const $ = id => document.getElementById(id);
+
+async function loadDay(day) {
+  try {
+  $('status').textContent = 'Loading forecast...';
+  const r = await fetch('/api/forecast' + (day ? '?date=' + day : ''));
+  const fc = await r.json();
+  if (fc.error) { $('status').textContent = 'Error: ' + fc.error; return; }
+  map.getSource('danger').setData(fc);
+  prepareZones(fc);
+  rebuildSlopes();
+  const rated = fc.features.filter(f => +f.properties.danger_level > 0).length;
+  $('day').value = fc.day;
+  $('status').textContent = fc.features.length
+    ? `${fc.features.length} zones, ${rated} rated (${fc.day})`
+    : `No saved forecast for ${fc.day}. History only exists for days the server has run.`;
+  if (!rated && fc.features.length) $('status').textContent += ' - unrated zones are not slope-shaded.';
+  const b = $('banner');
+  if (fc.demo) { b.textContent = 'DEMO DATA - not a real forecast'; b.style.display = 'block'; }
+  else if (fc.features.length && !rated) {
+    b.textContent = 'No zones currently rated (likely off-season or forecasts not yet published)';
+    b.style.display = 'block';
+  } else b.style.display = 'none';
+  } catch (err) {
+    console.error(err);
+    const net = err instanceof TypeError;   // fetch() itself failed: server unreachable
+    $('status').textContent = net
+      ? 'Cannot reach the server at ' + location.origin + '. Is python3 server.py still running in Terminal? Open this page from http://localhost:8000.'
+      : 'Could not load forecast: ' + (err && err.message ? err.message : err);
+  }
+}
+
+// ---- aspect / elevation rose (same rule as the map shading) ----
+function rose(model) {
+  const size = 240, c = size/2, rOuter = 100, ringW = 30, gap = 2;
+  const pt = (r, deg) => { const a = (deg-90)*Math.PI/180; return [c + r*Math.cos(a), c + r*Math.sin(a)]; };
+  let svg = `<svg viewBox="0 0 ${size} ${size}" width="100%" role="img" aria-label="Aspect and elevation danger rose">`;
+  BANDS.forEach((band, bi) => {
+    const r1 = rOuter - bi*ringW, r0 = r1 - ringW + gap;
+    ASPECTS.forEach((asp, ai) => {
+      const a0 = ai*45 - 22.5 + 1, a1 = ai*45 + 22.5 - 1;
+      const [x0,y0] = pt(r1,a0), [x1,y1] = pt(r1,a1), [x2,y2] = pt(r0,a1), [x3,y3] = pt(r0,a0);
+      const k = ai*3 + bi, lvl = model.levels[k], prob = model.isProb[k];
+      svg += `<path d="M${x0},${y0} A${r1},${r1} 0 0 1 ${x1},${y1} L${x2},${y2} A${r0},${r0} 0 0 0 ${x3},${y3} Z"
+        fill="${COLORS[lvl] || 'none'}" fill-opacity="${prob ? 1 : 0.6}" stroke="${prob ? '#000' : 'currentColor'}"
+        stroke-opacity="${prob ? 1 : 0.35}" stroke-width="${prob ? 2 : 1}"><title>${asp} ${band}: ${NAMES[lvl] || 'n/a'}${prob ? ' (avalanche problem)' : ''}</title></path>`;
+    });
+  });
+  ['N','E','S','W'].forEach((t,i) => { const [x,y] = pt(rOuter+12, i*90);
+    svg += `<text x="${x}" y="${y}" font-size="12" text-anchor="middle" dominant-baseline="middle" fill="currentColor">${t}</text>`; });
+  return svg + '</svg>';
+}
+
+function badge(l) {
+  const bg = COLORS[l] || NOCOLOR, fg = (l===2 || !COLORS[l]) ? '#111' : '#fff';
+  return `<span class="badge" style="background:${bg};color:${fg}">${l>0 ? l + ' ' : ''}${NAMES[l] ?? 'No rating'}</span>`;
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function positionDetailPanel() {
+  // Keep the zone-detail popup from overlapping the legend, which now also lives top-right
+  // and can be taller or shorter depending on whether it's collapsed.
+  if (window.matchMedia('(max-width: 700px)').matches) return; // mobile layout positions #detail itself
+  const gap = 10;
+  const top = Math.round($('legend').getBoundingClientRect().bottom + gap);
+  $('detail').style.top = top + 'px';
+  $('detail').style.maxHeight = `calc(100% - ${top + 20}px)`;
+}
+
+function showDetail(p) {
+  const bands = typeof p.bands === 'string' ? JSON.parse(p.bands) : p.bands;
+  const problems = typeof p.problems === 'string' ? JSON.parse(p.problems) : (p.problems || []);
+  let h = `<h2>${esc(p.name)}</h2><div>${badge(+p.danger_level)}</div>`;
+  if (bands) h += `<table class="bands"><tr><td>Above treeline</td><td>${badge(bands.above)}</td></tr>
+      <tr><td>Near treeline</td><td>${badge(bands.near)}</td></tr>
+      <tr><td>Below treeline</td><td>${badge(bands.below)}</td></tr></table>`;
+  const model = buildZoneModel(p);
+  if (model) {
+    h += `<div style="margin-top:8px">${rose(model)}</div>
+          <div class="small">Same colors as the slope shading. Outer ring = above treeline, middle = near, inner = below. Bold outlines = aspects/elevations named in an avalanche problem; the others are shown one level lower.</div>`;
+  }
+  if (problems.length) {
+    problems.forEach(pr => h += `<div class="prob"><b>${esc(pr.name)}</b>
+      <div class="small">Likelihood: ${esc(pr.likelihood ?? 'n/a')} &middot; Size: ${esc([].concat(pr.size||[]).join('-') || 'n/a')}</div></div>`);
+  } else h += `<div class="small" style="margin-top:8px">No avalanche problem details for this zone/date.</div>`;
+  if (p.bottom_line) h += `<div class="prob"><b>Bottom line</b><div class="small">${p.bottom_line}</div></div>`;
+  if (p.link) h += `<div class="prob"><a href="${esc(p.link)}" target="_blank" rel="noopener">Full CAIC forecast</a></div>`;
+  $('detailBody').innerHTML = h;
+  $('detail').style.display = 'block';
+  positionDetailPanel();
+}
+
+function showSnotelDetail(p) {
+  const h = `<h2>${esc(p.name)}</h2>
+    <div class="small">Elevation: ${Math.round(p.elevation).toLocaleString()} ft &middot; SNOTEL station ${esc(p.stationId)}</div>
+    <div style="margin-top:8px;font-size:22px;font-weight:700">${p.depth_in}&quot; snow depth</div>
+    <div class="small" style="margin-top:2px">As of ${esc(p.asof)}</div>
+    <div class="prob"><a href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${encodeURIComponent(p.stationId)}" target="_blank" rel="noopener">Station page (NRCS)</a></div>`;
+  $('detailBody').innerHTML = h;
+  $('detail').style.display = 'block';
+  positionDetailPanel();
+}
+
+async function showWeatherDetail(p) {
+  const mapClickUrl = `https://forecast.weather.gov/MapClick.php?lat=${p.lat}&lon=${p.lon}`;
+  const elevFt = p.elevation != null ? Math.round(p.elevation * 3.28084).toLocaleString() + ' ft' : null;
+  $('detailBody').innerHTML = `<h2>${esc(p.name)}</h2>
+    <div class="small">Station ${esc(p.id)}${elevFt ? ' &middot; ' + elevFt : ''}</div>
+    <div class="small" style="margin-top:8px">Loading today's forecast...</div>`;
+  $('detail').style.display = 'block';
+  positionDetailPanel();
+  try {
+    const pr = await fetch(`https://api.weather.gov/points/${p.lat},${p.lon}`);
+    if (!pr.ok) throw new Error(`points request failed (${pr.status})`);
+    const pj = await pr.json();
+    const fr = await fetch(pj.properties.forecast);
+    if (!fr.ok) throw new Error(`forecast request failed (${fr.status})`);
+    const fj = await fr.json();
+    const period = fj.properties.periods[0];
+    const h = `<h2>${esc(p.name)}</h2>
+      <div class="small">Station ${esc(p.id)}${elevFt ? ' &middot; ' + elevFt : ''}</div>
+      <div style="margin-top:8px;font-size:22px;font-weight:700">${period.temperature}&deg;${esc(period.temperatureUnit)} &middot; ${esc(period.shortForecast)}</div>
+      <div class="small" style="margin-top:4px">${esc(period.name)}</div>
+      <table class="bands" style="margin-top:8px">
+        <tr><td>Wind speed</td><td>${esc(period.windSpeed || 'n/a')}</td></tr>
+        <tr><td>Wind direction</td><td>${esc(period.windDirection || 'n/a')}</td></tr>
+      </table>
+      <div class="small" style="margin-top:8px">${esc(period.detailedForecast)}</div>
+      <div class="prob"><a href="${esc(mapClickUrl)}" target="_blank" rel="noopener">Full forecast (NWS)</a></div>`;
+    $('detailBody').innerHTML = h;
+    positionDetailPanel();
+  } catch (e) {
+    console.error('Weather station forecast fetch failed', e);
+    $('detailBody').innerHTML += `<div class="small" style="margin-top:8px;color:#b00">Could not load forecast: ${esc(e.message)}</div>`;
+    positionDetailPanel();
+  }
+}
+
+// ---- interactions ----
+map.on('load', async () => {
+  await loadDay();
+  fetch('/api/days').then(r => r.json()).then(days => { if (days.length > 1) $('day').min = days[days.length-1]; });
+  map.addImage('wx-icon', buildWxIcon());
+});
+map.on('moveend', refreshLandLayers);
+map.on('click', 'danger-fill', e => showDetail(e.features[0].properties));
+map.on('mouseenter', 'danger-fill', () => map.getCanvas().style.cursor = 'pointer');
+map.on('mouseleave', 'danger-fill', () => map.getCanvas().style.cursor = '');
+map.on('click', 'snotel-points', e => showSnotelDetail(e.features[0].properties));
+map.on('mouseenter', 'snotel-points', () => map.getCanvas().style.cursor = 'pointer');
+map.on('mouseleave', 'snotel-points', () => map.getCanvas().style.cursor = '');
+map.on('click', 'wx-points', e => showWeatherDetail(e.features[0].properties));
+map.on('mouseenter', 'wx-points', () => map.getCanvas().style.cursor = 'pointer');
+map.on('mouseleave', 'wx-points', () => map.getCanvas().style.cursor = '');
+
+// ---- slope-angle hover readout: reads the same elevation tiles the shading layer uses ----
+function tileXYForLngLat(z, lng, lat) {
+  const n = Math.pow(2, z), r = lat * Math.PI / 180;
+  const x = (lng + 180) / 360 * n;
+  const y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n;
+  const tx = Math.floor(x), ty = Math.floor(y);
+  return [tx, ty, (x - tx) * 256, (y - ty) * 256];
+}
+let lastHoverT = 0;
+map.on('mousemove', e => {
+  if (!$('slopeAngleOn').checked) return;
+  const now = performance.now();
+  if (now - lastHoverT < 80) return;
+  lastHoverT = now;
+  const z = Math.min(14, Math.max(8, Math.round(map.getZoom())));
+  const [tx, ty, px, py] = tileXYForLngLat(z, e.lngLat.lng, e.lngLat.lat);
+  const elev = elevTileCache.get(`${z}/${tx}/${ty}`);
+  if (!elev) { $('slopeReadout').textContent = 'Loading terrain for this spot...'; return; }
+  const x = Math.min(255, Math.max(0, Math.round(px))), y = Math.min(255, Math.max(0, Math.round(py)));
+  const res = 40075016.686 * Math.cos(e.lngLat.lat * Math.PI / 180) / (256 * Math.pow(2, z));
+  const xl = x > 0 ? x - 1 : 0, xr = x < 255 ? x + 1 : 255, yu = y > 0 ? y - 1 : 0, yd = y < 255 ? y + 1 : 255;
+  const gx = (elev[y * 256 + xr] - elev[y * 256 + xl]) / ((xr - xl) * res);
+  const gy = (elev[yu * 256 + x] - elev[yd * 256 + x]) / ((yd - yu) * res);
+  const deg = Math.atan(Math.hypot(gx, gy)) * 180 / Math.PI;
+  const az = ((Math.atan2(-gx, -gy) * 180 / Math.PI) + 360) % 360;
+  const ai = Math.round(az / 45) % 8;
+  $('slopeReadout').textContent = `Slope: ${deg.toFixed(0)}°, ${ASPECTS[ai]} aspect (approx, from terrain data)`;
+});
+map.on('mouseleave', () => {
+  if ($('slopeAngleOn').checked) $('slopeReadout').textContent = 'Hover the map to read the angle.';
+});
+const updateCompass = () => { $('dial').style.transform = `rotate(${-map.getBearing()}deg)`; };
+map.on('rotate', updateCompass);
+map.on('load', updateCompass);
+const resetNorth = () => map.easeTo({ bearing:0, duration:400 });
+$('compass').onclick = resetNorth;
+$('compass').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); resetNorth(); } };
+// ---- peak search ----
+let allPeaks = [];
+fetch('/peaks.json').then(r => r.ok ? r.json() : null).then(fc => {
+  if (!fc || !fc.features) return;
+  allPeaks = fc.features.map(f => ({
+    name: f.properties.name, ele_ft: f.properties.ele_ft,
+    lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1]
+  }));
+}).catch(() => {});
+
+function searchPeaks(q) {
+  q = q.trim().toLowerCase();
+  if (!q) return [];
+  const starts = [], contains = [];
+  for (const p of allPeaks) {
+    const n = p.name.toLowerCase();
+    if (n.startsWith(q)) starts.push(p); else if (n.includes(q)) contains.push(p);
+  }
+  starts.sort((a, b) => (b.ele_ft || 0) - (a.ele_ft || 0));
+  contains.sort((a, b) => (b.ele_ft || 0) - (a.ele_ft || 0));
+  return starts.concat(contains).slice(0, 25);
+}
+function renderPeakResults(list) {
+  const box = $('peakResults');
+  if (!list.length) {
+    box.innerHTML = $('peakSearchInput').value.trim() ? '<div class="empty">No peaks found.</div>' : '';
+    box.style.display = $('peakSearchInput').value.trim() ? 'block' : 'none';
+    return;
+  }
+  box.innerHTML = list.map((p, i) =>
+    `<div class="item" data-i="${i}">${esc(p.name)}${p.ele_ft ? `<span class="el"> &mdash; ${p.ele_ft.toLocaleString()} ft</span>` : ''}</div>`
+  ).join('');
+  box.style.display = 'block';
+  box.querySelectorAll('.item').forEach(el => el.onclick = () => selectPeak(list[+el.dataset.i]));
+}
+function selectPeak(p) {
+  map.flyTo({ center: [p.lon, p.lat], zoom: 13.5, essential: true });
+  $('peakSearchInput').value = p.name;
+  $('peakResults').style.display = 'none';
+}
+let peakResultsCache = [];
+$('peakSearchInput').oninput = e => {
+  peakResultsCache = searchPeaks(e.target.value);
+  renderPeakResults(peakResultsCache);
+};
+$('peakSearchInput').onkeydown = e => {
+  if (e.key === 'Enter' && peakResultsCache.length) selectPeak(peakResultsCache[0]);
+  if (e.key === 'Escape') { $('peakResults').style.display = 'none'; e.target.blur(); }
+};
+document.addEventListener('click', e => {
+  if (!$('peakSearch').contains(e.target)) $('peakResults').style.display = 'none';
+});
+
+$('closeDetail').onclick = () => $('detail').style.display = 'none';
+window.addEventListener('resize', () => { if ($('detail').style.display === 'block') positionDetailPanel(); });
+$('day').onchange = e => loadDay(e.target.value);
+$('op').oninput = e => map.setPaintProperty('danger-fill', 'fill-opacity', +e.target.value);
+const BASE_LAYER_IDS = ['topo', 'imagery', 'dailysat', 'weeklysat'];
+async function updateSatNote(val) {
+  if (val === 'dailysat') {
+    $('satNote').textContent = `NASA VIIRS true-color, imagery from ${gibsDate} (UTC). Refreshes automatically about once a day.`;
+  } else if (val === 'weeklysat') {
+    $('satNote').textContent = 'Checking Sentinel-2 availability...';
+    try {
+      // A fixed tile over central Colorado, just to check the server's proxy is configured.
+      const r = await fetch('/api/sat-tile/8/51/98', { cache: 'no-store' });
+      const ct = r.headers.get('content-type') || '';
+      if (r.ok && ct.startsWith('image')) {
+        $('satNote').textContent = 'Sentinel-2, most recent available pass (roughly weekly revisit).';
+      } else {
+        const msg = await r.text().catch(() => '');
+        $('satNote').textContent = 'Weekly hi-res is not set up yet: ' + (msg || 'add Sentinel-2 credentials to secrets.env (see README).');
+      }
+    } catch (e) {
+      $('satNote').textContent = 'Could not reach the Sentinel-2 proxy on the server.';
+    }
+  } else {
+    $('satNote').textContent = '';
+  }
+}
+$('base').onchange = e => {
+  BASE_LAYER_IDS.forEach(id => map.setLayoutProperty(id, 'visibility', e.target.value === id ? 'visible' : 'none'));
+  updateSatNote(e.target.value);
+};
+// Keep the daily layer's date current if the tab is left open across midnight UTC.
+setInterval(() => {
+  const d = gibsDateUTC();
+  if (d === gibsDate) return;
+  gibsDate = d;
+  const src = map.getSource('dailysat');
+  if (src && typeof src.setTiles === 'function') src.setTiles([gibsTileUrl(gibsDate)]);
+  if ($('base').value === 'dailysat') updateSatNote('dailysat');
+}, 30 * 60 * 1000);
+$('btnshade').onclick = e => {
+  const on = e.target.classList.toggle('on');
+  map.setLayoutProperty('hillshade', 'visibility', on ? 'visible' : 'none');
+};
+$('slopeOn').onchange = rebuildSlopes;
+$('slopeOp').oninput = e => { if (map.getLayer('avy')) map.setPaintProperty('avy', 'raster-opacity', +e.target.value); };
+let _t; const later = () => { clearTimeout(_t); _t = setTimeout(rebuildSlopes, 300); };
+$('minSlope').oninput = e => { $('minSlopeV').textContent = e.target.value; later(); };
+$('slopeAngleOn').onchange = () => {
+  rebuildSlopeAngle();
+  const on = $('slopeAngleOn').checked;
+  $('slopeAngleLegend').style.display = on ? 'block' : 'none';
+  $('slopeReadout').textContent = on
+    ? 'Hover the map to read the angle.'
+    : 'Turn on slope angle shading, then hover the map to read the angle.';
+};
+$('slopeAngleOp').oninput = e => { if (map.getLayer('slopeangle')) map.setPaintProperty('slopeangle', 'raster-opacity', +e.target.value); };
+$('publicLandOn').onchange = () => {
+  map.setLayoutProperty('public-land-line', 'visibility', $('publicLandOn').checked ? 'visible' : 'none');
+  refreshLandLayers();
+  if (!$('publicLandOn').checked && !$('privateLandOn').checked) setLandNote();
+};
+$('privateLandOn').onchange = () => {
+  map.setLayoutProperty('private-land-line', 'visibility', $('privateLandOn').checked ? 'visible' : 'none');
+  refreshLandLayers();
+  if (!$('publicLandOn').checked && !$('privateLandOn').checked) setLandNote();
+};
+$('snotelOn').onchange = () => {
+  const on = $('snotelOn').checked;
+  map.setLayoutProperty('snotel-points', 'visibility', on ? 'visible' : 'none');
+  $('snotelLegend').style.display = on ? 'block' : 'none';
+  if (on) {
+    refreshSnotel();
+    if (!snotelRefreshTimer) snotelRefreshTimer = setInterval(refreshSnotel, 30 * 60 * 1000);
+  } else {
+    $('snotelNote').textContent = 'USDA/NRCS SNOTEL stations, current snow depth. Click a dot for station details.';
+  }
+};
+$('wxOn').onchange = () => {
+  const on = $('wxOn').checked;
+  map.setLayoutProperty('wx-points', 'visibility', on ? 'visible' : 'none');
+  if (on) {
+    refreshWx();
+  } else {
+    $('wxNote').textContent = "NWS official airport/ASOS stations. Click a station for today's forecast.";
+  }
+};
+function wireSectionToggle(toggleId, bodyId, label) {
+  const btn = $(toggleId), body = $(bodyId);
+  btn.onclick = () => {
+    const collapsed = body.classList.toggle('collapsed');
+    btn.textContent = collapsed ? '+' : '\u2212';
+    const title = (collapsed ? 'Expand ' : 'Collapse ') + label;
+    btn.title = title;
+    btn.setAttribute('aria-label', title);
+  };
+}
+wireSectionToggle('slopeAngleSectionToggle', 'slopeAngleSectionBody', 'slope angle shading');
+wireSectionToggle('landSectionToggle', 'landSectionBody', 'land ownership');
+wireSectionToggle('snotelSectionToggle', 'snotelSectionBody', 'snow depth');
+wireSectionToggle('wxSectionToggle', 'wxSectionBody', 'weather stations');
+
+// ---- Historical weather data (double-click an area on the map) ----
+const WX_ICON_PATHS = {
+  newSnow: '<path d="M12 2v20M4.5 7l15 10M19.5 7l-15 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>',
+  snowDepth: '<path d="M12 21V5m0 0l-3 3m3-3l3 3M8 21h8M9 9h2M9 13h2M9 17h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  temp: '<path d="M11 14.3V5a2 2 0 1 1 4 0v9.3a4 4 0 1 1-4 0Z" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="13" cy="17" r="1.3" fill="currentColor"/>',
+  cloud: '<path d="M7 18a4 4 0 0 1-.6-7.96A5 5 0 0 1 16 8.1 4.5 4.5 0 0 1 17.5 18H7Z" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+  windSpeed: '<path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5M3 12h15a2.5 2.5 0 1 1-2.5 2.5M3 16h8a2 2 0 1 1-2 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  windGust: '<path d="M4 16a8 8 0 1 1 16 0M12 16l4.3-5.3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="12" cy="16" r="1.3" fill="currentColor"/>',
+  windDir: '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M12 6.5l2.3 5.5L20 14l-5.7 2-2.3 5.5-2.3-5.5L4 14l5.7-2Z" fill="currentColor"/>',
+  precip: '<path d="M12 3s6 7.3 6 11.3A6 6 0 1 1 6 14.3C6 10.3 12 3 12 3Z" stroke="currentColor" stroke-width="1.6" fill="none"/>'
+};
+const WX_METRIC_COLORS = {
+  snowDepth:'#2a78d6', windGust:'#eb6834', newSnow:'#1baf7a', windSpeed:'#eda100',
+  cloud:'#e87ba4', precip:'#008300', windDir:'#6250d6', temp:'#e34948'
+};
+const WX_METRIC_TITLES = {
+  snowDepth:'Snow depth', newSnow:'New snowfall', windSpeed:'Wind speed', windGust:'Wind gust',
+  cloud:'Cloud coverage', precip:'Precipitation', windDir:'Wind direction', temp:'Temperature'
+};
+function wxIcon(name, color) {
+  return `<svg class="wxIcon" viewBox="0 0 24 24" style="color:${color}">${WX_ICON_PATHS[name]}</svg>`;
+}
+function wxCard(iconName, statHtml, subHtml, bodyHtml) {
+  return `<div class="wxCard">
+    <div class="wxCardHead">${wxIcon(iconName, WX_METRIC_COLORS[iconName])}<h3>${esc(WX_METRIC_TITLES[iconName])}</h3></div>
+    ${statHtml ? `<div class="wxStat">${statHtml}</div>` : ''}
+    ${subHtml ? `<div class="wxStatSub">${subHtml}</div>` : ''}
+    ${bodyHtml}
+  </div>`;
+}
+
+function haversineMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8, rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function degToCompass(deg) {
+  if (deg == null || isNaN(deg)) return null;
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+function cloudAmountToPct(amount) {
+  const map = { SKC:0, CLR:0, FEW:25, SCT:50, BKN:75, OVC:100, VV:100 };
+  return amount in map ? map[amount] : null;
+}
+function circularMeanDeg(degs) {
+  const rad = Math.PI / 180;
+  let sx = 0, sy = 0, n = 0;
+  for (const d of degs) { if (d == null || isNaN(d)) continue; sx += Math.cos(d * rad); sy += Math.sin(d * rad); n++; }
+  if (!n) return null;
+  const deg = Math.atan2(sy / n, sx / n) / rad;
+  return ((deg % 360) + 360) % 360;
+}
+function fmtMonthDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+function sumKey(rows, key) {
+  const vals = rows.map(r => r[key]).filter(v => v != null && !isNaN(v));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+}
+function avgKey(rows, key) {
+  const vals = rows.map(r => r[key]).filter(v => v != null && !isNaN(v));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+function maxKey(rows, key) {
+  const vals = rows.map(r => r[key]).filter(v => v != null && !isNaN(v));
+  return vals.length ? Math.max(...vals) : null;
+}
+
+// ---- lightweight hand-rolled SVG charts (no external chart library) ----
+function svgLineChart(rows, key, opts) {
+  opts = opts || {};
+  const w = 780, h = 150, padL = 38, padR = 12, padT = 10, padB = 22;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const vals = rows.map(r => r[key]);
+  const present = vals.filter(v => v != null && !isNaN(v));
+  if (!present.length) return '<div class="wxEmpty">No data for this period.</div>';
+  let lo = Math.min(...present), hi = Math.max(...present);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const padV = (hi - lo) * 0.12;
+  lo -= padV; hi += padV;
+  const n = rows.length;
+  const x = i => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
+  const y = v => padT + plotH - ((v - lo) / (hi - lo)) * plotH;
+  let path = '', started = false, lastPt = null, firstIdx = -1;
+  vals.forEach((v, i) => {
+    if (v == null || isNaN(v)) { started = false; return; }
+    if (firstIdx < 0) firstIdx = i;
+    path += (started ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1) + ' ';
+    started = true;
+    lastPt = [x(i), y(v)];
+  });
+  let area = '';
+  if (path && firstIdx >= 0 && lastPt) {
+    area = `M${x(firstIdx).toFixed(1)},${y(lo).toFixed(1)} ${path.replace(/^M/, 'L')} L${lastPt[0].toFixed(1)},${y(lo).toFixed(1)} Z`;
+  }
+  const color = opts.color || '#2a78d6';
+  const grid = [0, 0.5, 1].map(t => {
+    const gy = padT + plotH * t;
+    const val = hi - (hi - lo) * t;
+    return `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${w - padR}" y2="${gy.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
+      <text x="${padL - 6}" y="${(gy + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--muted)">${Math.round(val)}</text>`;
+  }).join('');
+  const labelEvery = opts.labelEvery || Math.max(1, Math.ceil(n / 6));
+  let xlabels = '';
+  rows.forEach((r, i) => {
+    if (i % labelEvery === 0 || i === n - 1) {
+      xlabels += `<text x="${x(i).toFixed(1)}" y="${h - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(opts.labelFn ? opts.labelFn(r, i) : fmtMonthDay(r.date))}</text>`;
+    }
+  });
+  const endDot = lastPt ? `<circle cx="${lastPt[0].toFixed(1)}" cy="${lastPt[1].toFixed(1)}" r="4" fill="${color}" stroke="var(--bg)" stroke-width="2"/>` : '';
+  return `<svg class="wxChart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+    ${grid}
+    <path d="${area}" fill="${color}" fill-opacity="0.1" stroke="none"/>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${endDot}
+    ${xlabels}
+  </svg>`;
+}
+function svgBarChart(rows, key, opts) {
+  opts = opts || {};
+  const w = 780, h = 150, padL = 38, padR = 12, padT = 10, padB = 22;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const vals = rows.map(r => r[key]);
+  const present = vals.filter(v => v != null && !isNaN(v));
+  if (!present.length) return '<div class="wxEmpty">No data for this period.</div>';
+  const hi = Math.max(0.0001, ...present.map(v => Math.abs(v)));
+  const n = rows.length;
+  const slot = plotW / n;
+  const barW = Math.max(2, Math.min(24, slot - 2));
+  const color = opts.color || '#2a78d6';
+  let bars = '';
+  vals.forEach((v, i) => {
+    if (v == null || isNaN(v) || v <= 0) return;
+    const bh = (v / hi) * plotH;
+    const bx = padL + i * slot + (slot - barW) / 2;
+    const by = padT + plotH - bh;
+    bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1, bh).toFixed(1)}" rx="3" fill="${color}"/>`;
+  });
+  const grid = [0, 0.5, 1].map(t => {
+    const gy = padT + plotH * t;
+    const val = hi - hi * t;
+    return `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${w - padR}" y2="${gy.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
+      <text x="${padL - 6}" y="${(gy + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--muted)">${val.toFixed(1)}</text>`;
+  }).join('');
+  const labelEvery = opts.labelEvery || Math.max(1, Math.ceil(n / 6));
+  let xlabels = '';
+  rows.forEach((r, i) => {
+    if (i % labelEvery === 0 || i === n - 1) {
+      const cx = padL + i * slot + slot / 2;
+      xlabels += `<text x="${cx.toFixed(1)}" y="${h - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(opts.labelFn ? opts.labelFn(r, i) : fmtMonthDay(r.date))}</text>`;
+    }
+  });
+  return `<svg class="wxChart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${grid}${bars}${xlabels}</svg>`;
+}
+function svgDirectionRose(rows) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const counts = Object.fromEntries(dirs.map(d => [d, 0]));
+  rows.forEach(r => { const c = degToCompass(r.windDirDeg); if (c) counts[c]++; });
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (!total) return '<div class="wxEmpty">No wind direction data for this period.</div>';
+  const barRows = dirs.map(d => ({ date: d, value: counts[d] }));
+  return svgBarChart(barRows, 'value', { color: WX_METRIC_COLORS.windDir, labelFn: r => r.date, labelEvery: 1 });
+}
+function dirChipRow(rows) {
+  const chips = rows.filter(r => r.windDirDeg != null)
+    .map(r => `<span class="wxChip">${esc(fmtMonthDay(r.date))}: ${esc(degToCompass(r.windDirDeg) || '-')}</span>`).join('');
+  return chips ? `<div class="wxChipRow">${chips}</div>` : '<div class="wxEmpty">No wind direction data for this period.</div>';
+}
+
+// ---- data fetchers ----
+async function fetchSnotelDaily(triplet, beginRel, endRel, elements) {
+  const url = `https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=${elements}&duration=DAILY&beginDate=${beginRel}&endDate=${endRel}&returnFlags=false`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`SNOTEL data request failed (${r.status})`);
+  const j = await r.json();
+  const out = {};
+  for (const series of (j[0] ? j[0].data : [])) {
+    const m = new Map();
+    for (const v of series.values) m.set(v.date, v.value);
+    out[series.stationElement.elementCode] = m;
+  }
+  return out;
+}
+async function fetchNwsObsDaily(stationId, daysBack) {
+  const end = new Date();
+  const start = new Date(end.getTime() - daysBack * 24 * 3600 * 1000);
+  const url = `https://api.weather.gov/stations/${stationId}/observations?start=${start.toISOString()}&end=${end.toISOString()}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`station observations request failed (${r.status})`);
+  const j = await r.json();
+  const byDate = new Map();
+  for (const f of j.features) {
+    const p = f.properties;
+    if (!p.timestamp) continue;
+    const date = new Date(p.timestamp).toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+    if (!byDate.has(date)) byDate.set(date, { temps: [], winds: [], gusts: [], dirs: [], clouds: [] });
+    const b = byDate.get(date);
+    if (p.temperature && p.temperature.value != null) b.temps.push(p.temperature.value * 9 / 5 + 32);
+    if (p.windSpeed && p.windSpeed.value != null) b.winds.push(p.windSpeed.value / 1.60934);
+    if (p.windGust && p.windGust.value != null) b.gusts.push(p.windGust.value / 1.60934);
+    if (p.windDirection && p.windDirection.value != null) b.dirs.push(p.windDirection.value);
+    if (p.cloudLayers && p.cloudLayers.length) {
+      const pcts = p.cloudLayers.map(l => cloudAmountToPct(l.amount)).filter(v => v != null);
+      if (pcts.length) b.clouds.push(Math.max(...pcts));
+    }
+  }
+  const rows = [];
+  for (const [date, b] of byDate) {
+    rows.push({
+      date,
+      temp: b.temps.length ? b.temps.reduce((a, c) => a + c, 0) / b.temps.length : null,
+      tempMax: b.temps.length ? Math.max(...b.temps) : null,
+      tempMin: b.temps.length ? Math.min(...b.temps) : null,
+      windSpeed: b.winds.length ? b.winds.reduce((a, c) => a + c, 0) / b.winds.length : null,
+      windGust: b.gusts.length ? Math.max(...b.gusts) : null,
+      windDirDeg: circularMeanDeg(b.dirs),
+      cloud: b.clouds.length ? b.clouds.reduce((a, c) => a + c, 0) / b.clouds.length : null
+    });
+  }
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+  return rows;
+}
+async function fetchNoaaDaily(lat, lng, startISO, endISO) {
+  const url = `/api/noaa-wx?lat=${lat}&lon=${lng}&start=${startISO}&end=${endISO}`;
+  const r = await fetch(url);
+  if (r.status === 503) return { configured: false, data: [] };
+  if (!r.ok) throw new Error(`NOAA request failed (${r.status})`);
+  const j = await r.json();
+  return { configured: true, station: j.station, data: j.data || [] };
+}
+function buildDateRange(beginRel, endRel) {
+  const dates = [];
+  const today = new Date();
+  for (let i = beginRel; i <= endRel; i++) {
+    const d = new Date(today.getTime() + i * 24 * 3600 * 1000);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+// ---- view state & orchestration ----
+let historyCtx = {};
+const HIST_RANGE_LABELS = { '7d': 'Previous 7 Days', month: 'This Month', '3mo': 'Past 3 Months', '6mo': 'Past 6 Months', trends: 'Historical Monthly Trends' };
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+async function openHistoryView(lat, lng) {
+  historyCtx = { lat, lng, snotel: null, wx: null, range: '7d' };
+  $('historyView').classList.add('open');
+  $('historyTitle').textContent = `Historical weather — ${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+  $('historyStations').textContent = 'Finding nearby stations…';
+  $('historyContent').innerHTML = '<div class="wxLoading">Loading…</div>';
+  try {
+    const [snoStations, wxList] = await Promise.all([fetchSnotelStations(), fetchWxStations()]);
+    let nearestSno = null, nearestSnoDist = Infinity;
+    for (const triplet in snoStations) {
+      const st = snoStations[triplet];
+      const d = haversineMiles(lat, lng, st.latitude, st.longitude);
+      if (d < nearestSnoDist) { nearestSnoDist = d; nearestSno = st; }
+    }
+    let nearestWx = null, nearestWxDist = Infinity;
+    for (const st of wxList) {
+      const d = haversineMiles(lat, lng, st.lat, st.lon);
+      if (d < nearestWxDist) { nearestWxDist = d; nearestWx = st; }
+    }
+    historyCtx.snotel = nearestSno ? { triplet: nearestSno.stationTriplet, name: nearestSno.name, distance: nearestSnoDist } : null;
+    historyCtx.wx = nearestWx ? { id: nearestWx.id, name: nearestWx.name, distance: nearestWxDist } : null;
+    const parts = [];
+    parts.push(historyCtx.snotel
+      ? `Snow/precip/temp: ${esc(historyCtx.snotel.name)} SNOTEL (${nearestSnoDist.toFixed(1)} mi away)`
+      : 'No SNOTEL station found nearby');
+    if (historyCtx.wx) parts.push(`Wind/cloud (7-day): ${esc(historyCtx.wx.name)} (${nearestWxDist.toFixed(1)} mi away)`);
+    $('historyStations').innerHTML = parts.join(' &middot; ');
+  } catch (e) {
+    console.error('Station lookup failed', e);
+    $('historyStations').textContent = 'Could not find nearby stations: ' + e.message;
+  }
+  selectHistoryRange('7d');
+}
+function closeHistoryView() {
+  $('historyView').classList.remove('open');
+}
+
+async function selectHistoryRange(range) {
+  historyCtx.range = range;
+  ['histTab7d','histTabMonth','histTab3mo','histTab6mo','histTabTrends'].forEach(id => {
+    $(id).classList.toggle('on', $(id).dataset.range === range);
+  });
+  $('historyContent').innerHTML = '<div class="wxLoading">Loading ' + esc(HIST_RANGE_LABELS[range]) + '&hellip;</div>';
+  try {
+    if (range === 'trends') await renderHistoryTrends();
+    else await renderHistoryRangeDays(range);
+  } catch (e) {
+    console.error('Historical data load failed', e);
+    $('historyContent').innerHTML = `<div class="wxEmpty">Could not load historical data: ${esc(e.message)}</div>`;
+  }
+}
+
+async function renderHistoryRangeDays(range) {
+  const { snotel, wx, lat, lng } = historyCtx;
+  const now = new Date();
+  let beginRel;
+  if (range === '7d') beginRel = -6;
+  else if (range === 'month') beginRel = -(now.getDate() - 1);
+  else if (range === '3mo') beginRel = -90;
+  else beginRel = -183;
+
+  const snotelData = snotel ? await fetchSnotelDaily(snotel.triplet, beginRel, 0, 'SNWD,PRCP,TAVG,TMAX,TMIN') : null;
+  const dates = (snotelData && snotelData.SNWD && snotelData.SNWD.size) ? [...snotelData.SNWD.keys()].sort() : buildDateRange(beginRel, 0);
+
+  const snotelByDate = new Map();
+  if (snotelData) {
+    for (const date of dates) {
+      snotelByDate.set(date, {
+        snowDepth: snotelData.SNWD ? (snotelData.SNWD.get(date) ?? null) : null,
+        precip: snotelData.PRCP ? (snotelData.PRCP.get(date) ?? null) : null,
+        snoTemp: snotelData.TAVG ? (snotelData.TAVG.get(date) ?? null) : null,
+        snoTempMax: snotelData.TMAX ? (snotelData.TMAX.get(date) ?? null) : null,
+        snoTempMin: snotelData.TMIN ? (snotelData.TMIN.get(date) ?? null) : null
+      });
+    }
+  }
+  let prevDepth = null;
+  for (const date of dates) {
+    const rec = snotelByDate.get(date);
+    if (!rec) continue;
+    const depth = rec.snowDepth;
+    rec.newSnow = (depth != null && prevDepth != null && depth > prevDepth) ? (depth - prevDepth) : (depth != null ? 0 : null);
+    if (depth != null) prevDepth = depth;
+  }
+
+  let windCloudByDate = new Map();
+  let windCloudSource = null;
+  if (range === '7d' && wx) {
+    const nwsRows = await fetchNwsObsDaily(wx.id, 7);
+    nwsRows.forEach(r => windCloudByDate.set(r.date, r));
+    windCloudSource = { label: `nearest airport station (${esc(wx.name)}, ${wx.distance.toFixed(1)} mi away)`, available: true };
+  } else if (range !== '7d') {
+    const startISO = dates[0], endISO = dates[dates.length - 1];
+    try {
+      const noaa = await fetchNoaaDaily(lat, lng, startISO, endISO);
+      if (noaa.configured && noaa.data.length) {
+        noaa.data.forEach(r => windCloudByDate.set(r.date, r));
+        windCloudSource = { label: `nearest NOAA climate station${noaa.station && noaa.station.name ? ' (' + esc(noaa.station.name) + ')' : ''}`, available: true };
+      } else {
+        windCloudSource = { available: false };
+      }
+    } catch (e) {
+      console.error('NOAA wind/cloud fetch failed', e);
+      windCloudSource = { available: false };
+    }
+  } else {
+    windCloudSource = { available: false };
+  }
+
+  const rows = dates.map(date => {
+    const s = snotelByDate.get(date) || {};
+    const w = windCloudByDate.get(date) || {};
+    return {
+      date,
+      snowDepth: s.snowDepth ?? null, newSnow: s.newSnow ?? null, precip: s.precip ?? null,
+      temp: (w.temp != null ? w.temp : s.snoTemp) ?? null,
+      windSpeed: w.windSpeed ?? null, windGust: w.windGust ?? null, windDirDeg: w.windDirDeg ?? null, cloud: w.cloud ?? null
+    };
+  });
+
+  renderHistoryCards(rows, { windCloudSource });
+}
+
+function renderHistoryCards(rows, opts) {
+  const hasAny = key => rows.some(r => r[key] != null);
+  let html = '';
+  if (opts.windCloudSource && opts.windCloudSource.available) {
+    html += `<div class="small" style="margin-bottom:10px">Wind/cloud data from ${opts.windCloudSource.label}.</div>`;
+  }
+
+  const curDepthRow = [...rows].reverse().find(r => r.snowDepth != null);
+  html += wxCard('snowDepth',
+    curDepthRow ? `${curDepthRow.snowDepth}&Prime;` : null,
+    curDepthRow ? `as of ${esc(fmtMonthDay(curDepthRow.date))}` : null,
+    hasAny('snowDepth') ? svgLineChart(rows, 'snowDepth', { color: WX_METRIC_COLORS.snowDepth }) : '<div class="wxEmpty">No snow depth data for this period.</div>');
+
+  const totalNewSnow = sumKey(rows, 'newSnow');
+  html += wxCard('newSnow',
+    totalNewSnow != null ? `${totalNewSnow.toFixed(1)}&Prime; total` : null, null,
+    hasAny('newSnow') ? svgBarChart(rows, 'newSnow', { color: WX_METRIC_COLORS.newSnow }) : '<div class="wxEmpty">No new-snow data for this period.</div>');
+
+  const totalPrecip = sumKey(rows, 'precip');
+  html += wxCard('precip',
+    totalPrecip != null ? `${totalPrecip.toFixed(2)}&Prime; total` : null, 'water equivalent (rain + melted snow)',
+    hasAny('precip') ? svgBarChart(rows, 'precip', { color: WX_METRIC_COLORS.precip }) : '<div class="wxEmpty">No precipitation data for this period.</div>');
+
+  const avgTemp = avgKey(rows, 'temp');
+  html += wxCard('temp',
+    avgTemp != null ? `${avgTemp.toFixed(0)}&deg;F avg` : null, null,
+    hasAny('temp') ? svgLineChart(rows, 'temp', { color: WX_METRIC_COLORS.temp }) : '<div class="wxEmpty">No temperature data for this period.</div>');
+
+  const windUnavailable = opts.windCloudSource && opts.windCloudSource.available === false;
+  const unavailNote = '<div class="wxEmpty">Connect a free NOAA climate token (see README) to see this for this time range.</div>';
+
+  html += wxCard('cloud',
+    windUnavailable ? null : (avgKey(rows, 'cloud') != null ? `${avgKey(rows, 'cloud').toFixed(0)}% avg` : null), null,
+    windUnavailable ? unavailNote : (hasAny('cloud') ? svgLineChart(rows, 'cloud', { color: WX_METRIC_COLORS.cloud }) : '<div class="wxEmpty">No cloud data for this period.</div>'));
+
+  html += wxCard('windSpeed',
+    windUnavailable ? null : (avgKey(rows, 'windSpeed') != null ? `${avgKey(rows, 'windSpeed').toFixed(0)} mph avg` : null), null,
+    windUnavailable ? unavailNote : (hasAny('windSpeed') ? svgLineChart(rows, 'windSpeed', { color: WX_METRIC_COLORS.windSpeed }) : '<div class="wxEmpty">No wind data for this period.</div>'));
+
+  html += wxCard('windGust',
+    windUnavailable ? null : (maxKey(rows, 'windGust') != null ? `${maxKey(rows, 'windGust').toFixed(0)} mph peak` : null), null,
+    windUnavailable ? unavailNote : (hasAny('windGust') ? svgBarChart(rows, 'windGust', { color: WX_METRIC_COLORS.windGust }) : '<div class="wxEmpty">No gust data for this period.</div>'));
+
+  html += wxCard('windDir', null, null,
+    windUnavailable ? unavailNote : (hasAny('windDirDeg') ? (rows.length <= 10 ? dirChipRow(rows) : svgDirectionRose(rows)) : '<div class="wxEmpty">No wind direction data for this period.</div>'));
+
+  $('historyContent').innerHTML = html;
+}
+
+async function renderHistoryTrends() {
+  const { snotel, wx, lat, lng } = historyCtx;
+  if (!snotel) {
+    $('historyContent').innerHTML = '<div class="wxEmpty">No SNOTEL station found near this area for monthly trends.</div>';
+    return;
+  }
+  const beginRel = -3653, endRel = 0;
+  const snotelData = await fetchSnotelDaily(snotel.triplet, beginRel, endRel, 'SNWD,PRCP,TAVG');
+  const allDates = snotelData.SNWD ? [...snotelData.SNWD.keys()].sort() : [];
+  if (!allDates.length) {
+    $('historyContent').innerHTML = '<div class="wxEmpty">No historical data available for this station.</div>';
+    return;
+  }
+
+  const monthly = Array.from({ length: 12 }, () => ({ depthSum: 0, depthN: 0, newSnowSum: 0, newSnowYears: new Set(), precipSum: 0, precipYears: new Set(), tempSum: 0, tempN: 0 }));
+  let prevDepth = null;
+  for (const date of allDates) {
+    const m = parseInt(date.slice(5, 7), 10) - 1;
+    const depth = snotelData.SNWD.get(date);
+    const prcp = snotelData.PRCP ? snotelData.PRCP.get(date) : null;
+    const tavg = snotelData.TAVG ? snotelData.TAVG.get(date) : null;
+    if (depth != null) { monthly[m].depthSum += depth; monthly[m].depthN++; }
+    if (depth != null && prevDepth != null && depth > prevDepth) monthly[m].newSnowSum += (depth - prevDepth);
+    if (depth != null) { monthly[m].newSnowYears.add(date.slice(0, 4)); prevDepth = depth; }
+    if (prcp != null) { monthly[m].precipSum += prcp; monthly[m].precipYears.add(date.slice(0, 4)); }
+    if (tavg != null) { monthly[m].tempSum += tavg; monthly[m].tempN++; }
+  }
+  const depthRows = monthly.map((m, i) => ({ date: MONTH_ABBR[i], value: m.depthN ? m.depthSum / m.depthN : null }));
+  const newSnowRows = monthly.map((m, i) => ({ date: MONTH_ABBR[i], value: m.newSnowYears.size ? m.newSnowSum / m.newSnowYears.size : null }));
+  const precipRows = monthly.map((m, i) => ({ date: MONTH_ABBR[i], value: m.precipYears.size ? m.precipSum / m.precipYears.size : null }));
+  const tempRows = monthly.map((m, i) => ({ date: MONTH_ABBR[i], value: m.tempN ? m.tempSum / m.tempN : null }));
+  const yearsOfRecord = new Date().getFullYear() - parseInt(allDates[0].slice(0, 4), 10);
+
+  let noaaMonthly = null, noaaAvailable = false;
+  try {
+    const noaa = await fetchNoaaDaily(lat, lng, allDates[0], allDates[allDates.length - 1]);
+    if (noaa.configured && noaa.data.length) {
+      noaaAvailable = true;
+      const nm = Array.from({ length: 12 }, () => ({ windSum: 0, windN: 0, gustSum: 0, gustN: 0, cloudSum: 0, cloudN: 0, dirs: [] }));
+      noaa.data.forEach(r => {
+        const m = parseInt(r.date.slice(5, 7), 10) - 1;
+        if (r.windSpeed != null) { nm[m].windSum += r.windSpeed; nm[m].windN++; }
+        if (r.windGust != null) { nm[m].gustSum += r.windGust; nm[m].gustN++; }
+        if (r.cloud != null) { nm[m].cloudSum += r.cloud; nm[m].cloudN++; }
+        if (r.windDirDeg != null) nm[m].dirs.push(r.windDirDeg);
+      });
+      noaaMonthly = {
+        wind: nm.map((m, i) => ({ date: MONTH_ABBR[i], value: m.windN ? m.windSum / m.windN : null })),
+        gust: nm.map((m, i) => ({ date: MONTH_ABBR[i], value: m.gustN ? m.gustSum / m.gustN : null })),
+        cloud: nm.map((m, i) => ({ date: MONTH_ABBR[i], value: m.cloudN ? m.cloudSum / m.cloudN : null })),
+        dirDeg: nm.map(m => circularMeanDeg(m.dirs))
+      };
+    }
+  } catch (e) {
+    console.error('NOAA monthly trends fetch failed', e);
+  }
+
+  let html = `<div class="small" style="margin-bottom:10px">Based on ${yearsOfRecord}+ years of record at ${esc(snotel.name)} SNOTEL${noaaAvailable ? ' and nearby NOAA climate data' : ''}.</div>`;
+  html += wxCard('snowDepth', null, 'average by calendar month', svgBarChart(depthRows, 'value', { color: WX_METRIC_COLORS.snowDepth, labelFn: r => r.date, labelEvery: 1 }));
+  html += wxCard('newSnow', null, 'average total by calendar month', svgBarChart(newSnowRows, 'value', { color: WX_METRIC_COLORS.newSnow, labelFn: r => r.date, labelEvery: 1 }));
+  html += wxCard('precip', null, 'average total by calendar month (water equivalent)', svgBarChart(precipRows, 'value', { color: WX_METRIC_COLORS.precip, labelFn: r => r.date, labelEvery: 1 }));
+  html += wxCard('temp', null, 'average by calendar month', svgBarChart(tempRows, 'value', { color: WX_METRIC_COLORS.temp, labelFn: r => r.date, labelEvery: 1 }));
+
+  if (noaaAvailable) {
+    html += wxCard('cloud', null, 'average by calendar month', svgBarChart(noaaMonthly.cloud, 'value', { color: WX_METRIC_COLORS.cloud, labelFn: r => r.date, labelEvery: 1 }));
+    html += wxCard('windSpeed', null, 'average by calendar month', svgBarChart(noaaMonthly.wind, 'value', { color: WX_METRIC_COLORS.windSpeed, labelFn: r => r.date, labelEvery: 1 }));
+    html += wxCard('windGust', null, 'average by calendar month', svgBarChart(noaaMonthly.gust, 'value', { color: WX_METRIC_COLORS.windGust, labelFn: r => r.date, labelEvery: 1 }));
+    html += wxCard('windDir', null, 'prevailing direction by calendar month',
+      `<div class="wxChipRow">${noaaMonthly.dirDeg.map((d, i) => d != null ? `<span class="wxChip">${MONTH_ABBR[i]}: ${degToCompass(d)}</span>` : '').join('')}</div>`);
+  } else {
+    const unavailNote = '<div class="wxEmpty">Connect a free NOAA climate token (see README) to see this for monthly trends.</div>';
+    html += wxCard('cloud', null, null, unavailNote);
+    html += wxCard('windSpeed', null, null, unavailNote);
+    html += wxCard('windGust', null, null, unavailNote);
+    html += wxCard('windDir', null, null, unavailNote);
+  }
+
+  $('historyContent').innerHTML = html;
+}
+
+$('historyClose').onclick = closeHistoryView;
+['histTab7d','histTabMonth','histTab3mo','histTab6mo','histTabTrends'].forEach(id => {
+  $(id).onclick = () => selectHistoryRange($(id).dataset.range);
+});
+
+map.doubleClickZoom.disable();
+map.on('dblclick', e => {
+  if (e.originalEvent) e.originalEvent.preventDefault();
+  const { lng, lat } = e.lngLat;
+  const btn = document.createElement('button');
+  btn.className = 'historyBtn';
+  btn.textContent = 'See historical data for this area';
+  const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true })
+    .setLngLat([lng, lat])
+    .setDOMContent(btn)
+    .addTo(map);
+  btn.onclick = () => { popup.remove(); openHistoryView(lat, lng); };
+});
+$('controlsHeader').onclick = () => {
+  const collapsed = $('controlsBody').classList.toggle('collapsed');
+  $('controlsToggle').textContent = collapsed ? '+' : '\u2212';
+  $('controlsToggle').title = collapsed ? 'Expand controls' : 'Collapse controls';
+  $('controlsToggle').setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
+};
+$('legendHeader').onclick = () => {
+  const collapsed = $('legendBody').classList.toggle('collapsed');
+  $('legendToggle').textContent = collapsed ? '+' : '\u2212';
+  $('legendToggle').title = collapsed ? 'Expand legend' : 'Collapse legend';
+  $('legendToggle').setAttribute('aria-label', collapsed ? 'Expand legend' : 'Collapse legend');
+  if ($('detail').style.display === 'block') positionDetailPanel();
+};
+$('btn3d').onclick = e => {
+  const on = e.target.classList.toggle('on');
+  if (on) {
+    map.setTerrain({ source:'dem', exaggeration:1.4 });
+    map.easeTo({ pitch:65, duration:900 });
+  } else {
+    map.setTerrain(null);
+    map.easeTo({ pitch:0, bearing:0, duration:700 });
+  }
+};
+}
+
+// Load MapLibre from the first CDN that works.
+(function () {
+  const bases = [
+    'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/',
+    'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/',
+    'https://unpkg.com/maplibre-gl@4.7.1/dist/'
+  ];
+  function fail() {
+    document.getElementById('status').innerHTML =
+      'Could not load the map library. Open this page at <b>http://localhost:8000</b> in a normal browser with internet access (not a preview pane).';
+  }
+  function tryBase(i) {
+    if (i >= bases.length) return fail();
+    const css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = bases[i] + 'maplibre-gl.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = bases[i] + 'maplibre-gl.js';
+    js.onload = () => (window.maplibregl ? startApp() : tryBase(i + 1));
+    js.onerror = () => { css.remove(); js.remove(); tryBase(i + 1); };
+    document.head.appendChild(js);
+  }
+  tryBase(0);
+})();
+</script>
+</body>
+</html>
